@@ -26,6 +26,7 @@ def main():
         ip = device["ip"]
         vendor = fingerprint.get_vendor(device["mac"])
         ports = fingerprint.scan_ports(ip)
+        identity = fingerprint.identify_device(vendor, ports)
         open_ports = [port["port"] for port in ports if port.get("state") == "open"]
         iot_flags = {
             "telnet_open": rules.check_telnet_open(open_ports),
@@ -49,6 +50,7 @@ def main():
         result = {
             **device,
             "vendor": vendor,
+            "identity": identity,
             "ports": ports,
             "vulnerabilities": vulnerabilities,
             "nmap_findings": nmap_findings,

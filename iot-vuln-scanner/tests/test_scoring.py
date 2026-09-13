@@ -1,3 +1,4 @@
+from src.fingerprint import identify_device
 from src.report import generate_report
 from src.scoring import calculate_risk
 
@@ -9,6 +10,25 @@ def test_calculate_risk_levels():
         [{"severity": "CRITICAL", "score": 9.8}],
         {"default_credentials": True},
     ) == "high"
+
+
+def test_identify_camera_from_services():
+    identity = identify_device(
+        "Hikvision",
+        [
+            {
+                "port": 554,
+                "state": "open",
+                "service": "rtsp",
+                "product": "Hikvision camera",
+                "version": "5.0",
+            }
+        ],
+    )
+
+    assert identity["type"] == "IP camera"
+    assert identity["vendor"] == "Hikvision"
+    assert identity["model"] == "Hikvision camera"
 
 
 def test_generate_report(tmp_path):

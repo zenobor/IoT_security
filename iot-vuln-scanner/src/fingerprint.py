@@ -14,6 +14,48 @@ def get_vendor(mac_address: str) -> str:
         return "Unknown"
 
 
+def identify_device(vendor: str, ports: list[dict]) -> dict[str, str]:
+    """Build a readable device identity from vendor and detected services."""
+    services = {
+        str(port.get("service", "")).lower()
+        for port in ports
+        if port.get("state") == "open"
+    }
+    products = [
+        str(port.get("product", "")).strip()
+        for port in ports
+        if port.get("product")
+    ]
+    versions = [
+        str(port.get("version", "")).strip()
+        for port in ports
+        if port.get("version")
+    ]
+    vendor_name = vendor if vendor and vendor != "Unknown" else "Unknown vendor"
+    model = products[0] if products else "Unknown model"
+
+    if "rtsp" in services or 554 in {port.get("port") for port in ports}:
+        device_type = "IP camera"
+    elif "ssh" in services and ("http" in services or "https" in services):
+        device_type = "Network device or IoT gateway"
+    elif "http" in services or "https" in services:
+        device_type = "Web-enabled IoT device"
+    elif "ipp" in services or 9100 in {port.get("port") for port in ports}:
+        device_type = "Network printer"
+    elif "smb" in services or 445 in {port.get("port") for port in ports}:
+        device_type = "Network storage or computer"
+    else:
+        device_type = "Unknown network device"
+
+    return {
+        "type": device_type,
+        "vendor": vendor_name,
+        "model": model,
+        "version": versions[0] if versions else "Unknown version",
+        "confidence": "service-based estimate" if not products else "Nmap service match",
+    }
+
+
 def scan_ports(ip: str, arguments: str = "-sV") -> list[dict]:
     """Ritorna porte aperte e servizi/versioni rilevati su un IP."""
     try:
