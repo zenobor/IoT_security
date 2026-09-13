@@ -65,7 +65,7 @@ def generate_json_report(devices: list[dict], output_path: str, history: dict | 
 
 
 def generate_report(devices: list[dict], output_path: str) -> None:
-    """Write a short, structured Markdown report."""
+    """Write a compact Markdown report with details only for devices needing attention."""
     lines = [
         "# IoT Scan Report",
         "",
@@ -74,12 +74,20 @@ def generate_report(devices: list[dict], output_path: str) -> None:
         f"- Devices found: **{len(devices)}**",
         _risk_summary(devices),
         "",
-        "The scan uses ARP to find devices, Nmap to inspect services, and simple checks "
-        "for common IoT security problems.",
+        "### Checks performed",
+        "- ARP: finds active devices and their MAC addresses.",
+        "- Nmap: checks open ports and service versions.",
+        "- IoT rules: checks Telnet, UPnP and known default credentials.",
+        "- NVD/Nmap scripts: looks for possible known vulnerabilities.",
         "",
+        "## Devices",
+        "",
+        "| IP | What it is | Vendor / model | Ports | Risk |",
+        "| --- | --- | --- | --- | --- |",
     ]
 
-    for number, device in enumerate(devices, start=1):
+    attention_devices = []
+    for device in devices:
         identity = device.get("identity", {})
         vendor = identity.get("vendor") or device.get("vendor", "Unknown vendor")
         model = identity.get("model") or device.get("model", "Unknown model")
@@ -90,45 +98,39 @@ def generate_report(devices: list[dict], output_path: str) -> None:
             for port in device.get("ports", [])
             if port.get("state") == "open"
         ]
-        lines.extend(
-            [
-                f"---\n\n## Device {number}: {_clean(device.get('ip', 'unknown'))}",
-                "",
-                "### Identity",
-                "",
-                "| Field | Result |",
-                "| --- | --- |",
-                f"| Type | {_clean(device_type)} |",
-                f"| Vendor | {_clean(vendor)} |",
-                f"| Model | {_clean(model)} |",
-                f"| MAC address | {_clean(device.get('mac', 'unknown'))} |",
-                "",
-                "### Risk",
-                "",
-                f"**{_clean(risk)}**",
-                "",
-                "### Open ports",
-                "",
-                _clean(", ".join(open_ports) or "None detected"),
-                "",
-                "### Security checks",
-                "",
-                *[f"- {check}" for check in _test_summary(device)],
-                "",
-                "### What to do",
-                "",
-                *[f"- {_clean(recommendation)}" for recommendation in _recommendations(device)],
-            ]
+        lines.append(
+            "| "
+            + " | ".join(
+                _clean(value)
+                for value in (
+                    device.get("ip", "unknown"),
+                    device_type,
+                    f"{vendor} / {model}",
+                    ", ".join(open_ports) or "none",
+                    risk,
+                )
+            )
+            + " |"
         )
         vulnerabilities = device.get("vulnerabilities", [])
-        if vulnerabilities:
-            lines.extend(["", "### Possible vulnerabilities", ""])
+        if risk in {"HIGH", "MEDIUM"} or vulnerabilities or device.get("scan_errors"):
+            attention_devices.append((device, vulnerabilities))
+
+    if attention_devices:
+        lines.extend(["", "## Attention needed", ""])
+        for device, vulnerabilities in attention_devices:
+            lines.append(f"### {_clean(device.get('ip', 'unknown'))}")
+            lines.append(
+                "- " + _clean(" ".join(_recommendations(device)))
+            )
+            if device.get("scan_errors"):
+                lines.append("- Nmap was not available, so port checks may be incomplete.")
             for vulnerability in vulnerabilities:
                 lines.append(
-                    f"- {vulnerability.get('id', 'CVE-unknown')}: "
+                    f"- {_clean(vulnerability.get('id', 'CVE-unknown'))}: "
                     f"{_clean(vulnerability.get('description', ''))}"
                 )
-        lines.append("")
+            lines.append("")
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
