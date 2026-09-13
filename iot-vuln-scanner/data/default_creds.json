@@ -1,0 +1,5 @@
+{
+  "hikvision": [{"username": "admin", "password": "12345"}],
+  "dahua": [{"username": "admin", "password": "admin"}],
+  "generic": [{"username": "admin", "password": "admin"}, {"username": "root", "password": "root"}]
+}

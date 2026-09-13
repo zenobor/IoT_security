@@ -1,0 +1,13 @@
+# Ambiente virtuale
+venv/
+__pycache__/
+*.pyc
+
+# File di configurazione locali (es. API key)
+.env
+
+# Report generati
+reports/
+
+# IDE
+.vscode/
