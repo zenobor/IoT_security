@@ -80,10 +80,11 @@ def main():
     nvd_cache = {}
     for number, device in enumerate(devices, start=1):
         ip = device["ip"]
-        print(f"Analysing device {number}/{len(devices)}: {ip}")
+        print(f"Analysing device {number}/{len(devices)}: {ip}", flush=True)
         vendor = fingerprint.get_vendor(device["mac"])
         hostname = "Offline mode" if args.offline else fingerprint.get_hostname(ip)
         scan_errors = []
+        print("  [1/3] Checking ports...", flush=True)
         try:
             ports = fingerprint.scan_ports(ip, port_spec=port_spec, mode=args.mode)
         except RuntimeError as exc:
@@ -102,6 +103,7 @@ def main():
 
         vulnerabilities = []
         if args.nvd and not args.offline:
+            print("  [2/4] Checking NVD...", flush=True)
             for port in ports:
                 product = port.get("product", "") or port.get("service", "")
                 version = port.get("version", "")
@@ -120,10 +122,12 @@ def main():
         nmap_findings = []
         deep_findings = []
         if args.mode == "full":
+            print("  [2/3] Running Nmap vulnerability scripts...", flush=True)
             try:
                 nmap_findings = vuln_check.run_nmap_vuln_scripts(ip)
             except RuntimeError as exc:
                 scan_errors.append(str(exc))
+            print("  [3/3] Checking web panels and TLS...", flush=True)
             deep_findings = deep_checks.run_deep_checks(ip, open_ports)
         iot_flags["nmap_findings"] = nmap_findings
         iot_flags["deep_checks"] = deep_findings

@@ -94,7 +94,7 @@ Per una scansione piu completa, che esegue anche gli script di vulnerabilita Nma
 python main.py --mode full --network 192.168.1.0/24 --output scan_report.md
 ```
 
-La modalita `full` esegue anche richieste di sola lettura sui pannelli web trovati. Controlla risposta HTTP, header di sicurezza e problemi TLS. Non prova password, non esegue login e non modifica i dispositivi.
+La modalita `full` controlla le 1.000 porte piu comuni e poi esegue richieste di sola lettura sui pannelli web trovati. Controlla risposta HTTP, header di sicurezza e problemi TLS. Ogni host ha un timeout, quindi la scansione continua anche quando un dispositivo non risponde. Non prova password, non esegue login e non modifica i dispositivi.
 
 Aggiungi `--nvd` se vuoi interrogare anche il database NVD per le CVE. Questa opzione puo richiedere piu tempo e una connessione Internet.
 

@@ -81,10 +81,13 @@ def run_nmap_vuln_scripts(ip: str) -> list[str]:
         raise RuntimeError(
             "Nmap program was not found. Install Nmap and reopen PowerShell."
         ) from exc
-    scanner.scan(
-        hosts=ip,
-        arguments="-T4 --top-ports 100 --version-light --script vuln --host-timeout 30s",
-    )
+    try:
+        scanner.scan(
+            hosts=ip,
+            arguments="-T4 --top-ports 100 --version-light --script vuln --host-timeout 30s",
+        )
+    except nmap.nmap.PortScannerError as exc:
+        raise RuntimeError(f"Nmap vulnerability scan failed for {ip}: {exc}") from exc
     if ip not in scanner.all_hosts():
         return []
 

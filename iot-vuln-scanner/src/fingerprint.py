@@ -105,10 +105,13 @@ def scan_ports(
     if port_spec:
         arguments = f"-T4 -p {port_spec} --version-light --host-timeout 15s"
     elif mode == "full":
-        arguments = "-T4 -p- -sV --host-timeout 60s"
+        arguments = "-T4 --top-ports 1000 --version-light --host-timeout 30s"
     else:
         arguments = "-T4 --top-ports 100 --version-light --host-timeout 15s"
-    scanner.scan(hosts=ip, arguments=arguments)
+    try:
+        scanner.scan(hosts=ip, arguments=arguments)
+    except nmap.nmap.PortScannerError as exc:
+        raise RuntimeError(f"Nmap port scan failed for {ip}: {exc}") from exc
 
     if ip not in scanner.all_hosts():
         return []
