@@ -151,6 +151,23 @@ I parametri significano:
 
 Il programma trova i dispositivi, legge vendor e porte, controlla le vulnerabilita e salva il risultato in `scan_report.md`. Il report mostra anche quanti dispositivi hanno rischio alto, medio o basso e consigli pratici.
 
+Alla fine della scansione il terminale stampa anche un riepilogo ASCII con:
+
+- punteggio della rete da 0 a 100;
+- numero di dispositivi high, medium e low risk;
+- IP, hostname, tipo, rischio e porte aperte per ogni dispositivo.
+
+Esempio:
+
+```text
++==============================================================================+
+| IoT VULNERABILITY SCAN - FINAL SUMMARY                                       |
++==============================================================================+
+| Network score: 74/100   HIGH: 1   MEDIUM: 2   LOW: 6                        |
+| 192.168.1.20    | camera               | IP camera              | HIGH   | 554 |
++==============================================================================+
+```
+
 Per eseguire i test installa prima `pytest`:
 
 ```powershell

@@ -10,6 +10,7 @@ import requests
 
 from src import discovery
 from src import deep_checks, fingerprint, report, rules, scoring, vuln_check
+from src.terminal_report import print_summary
 
 
 def _load_config(path: str | None) -> dict:
@@ -149,6 +150,7 @@ def main():
     if args.csv_output:
         report.generate_csv_report(results, args.csv_output)
     print(f"Report salvato in {args.output}")
+    print_summary(results, ip_range, args.mode, args.output)
 
 
 if __name__ == "__main__":
