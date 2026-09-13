@@ -1,9 +1,10 @@
 """Desktop interface for the IoT vulnerability scanner."""
 
+import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, QUrl, Qt
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,11 +29,20 @@ class ScannerWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.project_dir = Path(__file__).parent
+        self.output_dir = (
+            Path.home() / "IoTScannerReports"
+            if getattr(sys, "frozen", False)
+            else self.project_dir
+        )
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.markdown_report = self.output_dir / "scan_report.md"
+        self.html_report = self.output_dir / "scan_report.html"
         self.process = QProcess(self)
         self.process.setWorkingDirectory(str(self.project_dir))
         self.process.readyReadStandardOutput.connect(self.read_process_output)
         self.process.readyReadStandardError.connect(self.read_process_output)
         self.process.finished.connect(self.scan_finished)
+        self.process.errorOccurred.connect(self.process_error)
 
         self.setWindowTitle("IoT Vulnerability Scanner")
         self.resize(900, 650)
@@ -84,7 +94,7 @@ class ScannerWindow(QMainWindow):
         self.scan_button = QPushButton("Start scan")
         self.scan_button.setObjectName("scanButton")
         self.scan_button.clicked.connect(self.start_scan)
-        self.open_button = QPushButton("Open Markdown report")
+        self.open_button = QPushButton("Open report")
         self.open_button.clicked.connect(self.open_report)
         self.open_button.setEnabled(False)
         actions.addWidget(self.scan_button)
@@ -108,8 +118,7 @@ class ScannerWindow(QMainWindow):
         self.scan_button.setEnabled(False)
         self.status_label.setText("Scanning...")
 
-        arguments = [
-            "main.py",
+        scan_arguments = [
             "--network",
             self.network_input.text().strip(),
             "--timeout",
@@ -117,21 +126,28 @@ class ScannerWindow(QMainWindow):
             "--mode",
             self.mode_input.currentText(),
             "--output",
-            "scan_report.md",
+            str(self.markdown_report),
             "--html-output",
-            "scan_report.html",
+            str(self.html_report),
             "--csv-output",
-            "scan_results.csv",
+            str(self.output_dir / "scan_results.csv"),
             "--json-output",
-            "scan_results.json",
+            str(self.output_dir / "scan_results.json"),
         ]
         if self.ports_input.text().strip():
-            arguments.extend(["--ports", self.ports_input.text().strip()])
+            scan_arguments.extend(["--ports", self.ports_input.text().strip()])
         if self.offline_input.isChecked():
-            arguments.append("--offline")
+            scan_arguments.append("--offline")
         if self.nvd_input.isChecked():
-            arguments.append("--nvd")
-        self.process.start(sys.executable, arguments)
+            scan_arguments.append("--nvd")
+
+        if getattr(sys, "frozen", False):
+            program = sys.executable
+            arguments = ["--scan-cli", *scan_arguments]
+        else:
+            program = sys.executable
+            arguments = ["main.py", *scan_arguments]
+        self.process.start(program, arguments)
 
     def read_process_output(self) -> None:
         output = bytes(self.process.readAllStandardOutput()).decode(errors="replace")
@@ -149,9 +165,20 @@ class ScannerWindow(QMainWindow):
             self.status_label.setText("Scan failed. Check the log.")
             QMessageBox.warning(self, "Scan failed", "The scanner returned an error.")
 
+    def process_error(self, _error: QProcess.ProcessError) -> None:
+        self.scan_button.setEnabled(True)
+        self.status_label.setText("Could not start the scanner.")
+        self.log_output.appendPlainText(self.process.errorString())
+
     def open_report(self) -> None:
-        report_path = self.project_dir / "scan_report.md"
-        QDesktopServices.openUrl(report_path.as_uri())
+        report_path = self.html_report if self.html_report.exists() else self.markdown_report
+        if not report_path.exists():
+            QMessageBox.information(self, "Report not found", "Run a scan first.")
+            return
+        if sys.platform == "win32":
+            os.startfile(str(report_path))
+        else:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(report_path)))
 
 
 def main() -> None:
@@ -162,4 +189,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--scan-cli" in sys.argv:
+        sys.argv.remove("--scan-cli")
+        from main import main as run_cli
+
+        run_cli()
+    else:
+        main()
