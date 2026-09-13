@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QProgressBar,
+    QStyleFactory,
     QTableWidget,
     QTableWidgetItem,
     QSpinBox,
@@ -53,18 +55,30 @@ class ScannerWindow(QMainWindow):
         self.process.errorOccurred.connect(self.process_error)
 
         self.setWindowTitle("IoT Vulnerability Scanner")
-        self.resize(900, 650)
+        self.resize(980, 700)
+        self.setMinimumSize(820, 560)
         self.build_ui()
 
     def build_ui(self) -> None:
         self.setStyleSheet(
             """
-            QMainWindow { background: #f4f6f8; }
-            QGroupBox { font-weight: bold; margin-top: 12px; padding: 12px; }
-            QLineEdit, QComboBox, QSpinBox { padding: 6px; }
-            QPushButton { padding: 8px 14px; }
-            QPushButton#scanButton { background: #176b4d; color: white; font-weight: bold; }
-            QPlainTextEdit { background: #17202a; color: #d9f7e8; font-family: Consolas; }
+            QMainWindow { background: #e9edf2; }
+            QGroupBox { color: #173b57; font-weight: bold; margin-top: 10px; padding: 10px; border: 1px solid #aeb9c6; border-radius: 2px; background: #f7f8fa; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; background: #e9edf2; }
+            QLineEdit, QComboBox, QSpinBox { min-height: 23px; padding: 2px 5px; border: 1px solid #8b98a8; border-radius: 2px; background: white; }
+            QPushButton { min-height: 25px; padding: 3px 12px; border: 1px solid #7d8b99; border-radius: 2px; background: #f4f6f8; color: #1b2836; }
+            QPushButton:hover { background: #e1ebf5; border-color: #4d78a8; }
+            QPushButton:pressed { background: #c9d9e9; }
+            QPushButton#scanButton { background: #2b6ca3; color: white; font-weight: bold; border-color: #1e4f7d; }
+            QPushButton#scanButton:hover { background: #3c80bb; }
+            QTabWidget::pane { border: 1px solid #aeb9c6; background: #ffffff; }
+            QTabBar::tab { background: #d7dee7; border: 1px solid #aeb9c6; padding: 6px 18px; margin-right: 2px; }
+            QTabBar::tab:selected { background: white; border-bottom-color: white; color: #173b57; font-weight: bold; }
+            QTableWidget { alternate-background-color: #f0f4f8; gridline-color: #c7d0da; selection-background-color: #c9dff2; selection-color: #17202a; }
+            QHeaderView::section { background: #d7dee7; color: #173b57; padding: 5px; border: 1px solid #b4c0cc; font-weight: bold; }
+            QPlainTextEdit { background: #202a35; color: #dce8f2; font-family: Consolas; border: 1px solid #7e8b98; }
+            QProgressBar { border: 1px solid #9ba8b5; background: #f7f8fa; text-align: center; min-height: 16px; }
+            QProgressBar::chunk { background: #4d86b8; }
             """
         )
 
@@ -72,9 +86,9 @@ class ScannerWindow(QMainWindow):
         layout = QVBoxLayout(central)
 
         title = QLabel("IoT Vulnerability Scanner")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #173b57;")
-        subtitle = QLabel("Scan only networks you own or are authorized to test.")
-        subtitle.setStyleSheet("color: #52616b;")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #173b57; padding: 3px 0;")
+        subtitle = QLabel("Local network security assessment")
+        subtitle.setStyleSheet("color: #52616b; padding-bottom: 2px;")
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
@@ -88,6 +102,8 @@ class ScannerWindow(QMainWindow):
         self.timeout_input = QSpinBox()
         self.timeout_input.setRange(1, 30)
         self.timeout_input.setValue(2)
+        self.mode_input.setToolTip("Quick checks common ports. Full also runs deeper checks.")
+        self.timeout_input.setToolTip("Seconds to wait for ARP replies.")
         self.offline_input = QCheckBox("Do not use Internet services")
         self.nvd_input = QCheckBox("Query NVD for CVEs")
         form.addRow("Network", self.network_input)
@@ -119,8 +135,14 @@ class ScannerWindow(QMainWindow):
         layout.addLayout(actions)
 
         self.status_label = QLabel("Ready")
-        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.status_label.setStyleSheet("color: #3d4d5d; padding: 2px 4px;")
         layout.addWidget(self.status_label)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
+        layout.addWidget(self.progress_bar)
         self.tabs = QTabWidget()
         devices_page = QWidget()
         devices_layout = QVBoxLayout(devices_page)
@@ -141,12 +163,14 @@ class ScannerWindow(QMainWindow):
         self.report_view.setPlaceholderText("The report will appear here after a scan.")
         report_layout.addWidget(self.report_view)
         self.tabs.addTab(report_page, "Report")
-        layout.addWidget(self.tabs, 1)
-
+        log_page = QWidget()
+        log_layout = QVBoxLayout(log_page)
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setMaximumHeight(150)
-        layout.addWidget(self.log_output, 1)
+        log_layout.addWidget(self.log_output)
+        self.tabs.addTab(log_page, "Log")
+        layout.addWidget(self.tabs, 1)
+        self.statusBar().showMessage("Ready")
         self.setCentralWidget(central)
 
     def start_scan(self) -> None:
@@ -162,6 +186,8 @@ class ScannerWindow(QMainWindow):
         self.scan_button.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText("Scanning...")
+        self.statusBar().showMessage("Scanning network...")
+        self.progress_bar.setRange(0, 0)
 
         scan_arguments = [
             "--network",
@@ -204,17 +230,22 @@ class ScannerWindow(QMainWindow):
     def scan_finished(self, exit_code: int, _exit_status: QProcess.ExitStatus) -> None:
         self.scan_button.setEnabled(True)
         self.cancel_button.setEnabled(False)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0 if exit_code else 1)
         if self.cancel_requested:
             self.status_label.setText("Scan cancelled.")
+            self.statusBar().showMessage("Scan cancelled")
             return
         if exit_code == 0:
             self.load_results()
             self.load_report()
             self.status_label.setText("Scan finished. Reports are ready.")
+            self.statusBar().showMessage("Scan complete")
             self.open_button.setEnabled(True)
             self.open_csv_button.setEnabled(True)
         else:
             self.status_label.setText("Scan failed. Check the log.")
+            self.statusBar().showMessage("Scan failed")
             QMessageBox.warning(self, "Scan failed", "The scanner returned an error.")
 
     def cancel_scan(self) -> None:
@@ -222,6 +253,7 @@ class ScannerWindow(QMainWindow):
             self.cancel_requested = True
             self.process.kill()
             self.status_label.setText("Scan cancelled.")
+            self.statusBar().showMessage("Cancelling scan...")
 
     def load_results(self) -> None:
         try:
@@ -279,6 +311,10 @@ class ScannerWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
+    if "WindowsVista" in QStyleFactory.keys():
+        app.setStyle("WindowsVista")
+    elif "Fusion" in QStyleFactory.keys():
+        app.setStyle("Fusion")
     window = ScannerWindow()
     window.show()
     sys.exit(app.exec())
