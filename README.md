@@ -6,8 +6,9 @@ Desktop and Python tool for finding IoT devices on an authorized local network a
 
 - Finds devices with ARP and identifies vendor, hostname and device type.
 - Checks ports and services with Nmap.
-- Checks Telnet, FTP, SSH, UPnP, HTTP/TLS and default credentials.
-- Reports web authentication, cleartext services and firmware banners.
+- Checks Telnet, FTP, SSH, UPnP, HTTP/TLS and known default-credential vendors.
+- Checks web authentication, cleartext traffic and firmware/service banners.
+- Flags exposed RDP, VNC, databases, Redis, MQTT and OPC UA services.
 - Reports manual checks for weak passwords, Wi-Fi security and VLAN/guest isolation.
 - Calculates a network score from `0` to `100`.
 - Creates Markdown, HTML, CSV and JSON reports.
@@ -43,7 +44,17 @@ Deeper read-only scan:
 python main.py --mode full --network 192.168.1.0/24 --output scan_report.md
 ```
 
-The terminal prints a final ASCII summary with the network score and every device.
+`quick` checks the 100 most common ports. `full` checks the 1,000 most common ports and runs deeper read-only checks. The terminal prints an ASCII summary with the network score, risk counts, warnings and manual checks.
+
+Useful options:
+
+```powershell
+python main.py --offline --network 192.168.1.0/24
+python main.py --ports 22,80,443,554 --network 192.168.1.0/24
+python main.py --mode full --nvd --network 192.168.1.0/24
+```
+
+The scanner never guesses passwords or uses brute force. Password strength, Wi-Fi encryption and VLAN/guest isolation are reported as manual checks when they cannot be verified from the scanning computer.
 
 Optional exports:
 
@@ -65,7 +76,7 @@ Or run the Windows build:
 
 The app includes Devices, Network map, Report, Log and Diagnostics tabs.
 
-The scanner does not guess passwords or perform brute force. Password strength, Wi-Fi encryption and VLAN isolation must be checked in the device or router settings. Full mode reports these limits explicitly instead of claiming they are safe.
+The app includes a network score, device details, a network map, report preview, logs and Nmap/Npcap diagnostics.
 
 ## Tests
 
