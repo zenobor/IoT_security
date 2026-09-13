@@ -17,6 +17,7 @@ Questo strumento va usato **esclusivamente sulla propria rete o su reti per cui 
 - [x] Export JSON, HTML e CSV
 - [x] Hostname, porte personalizzate e modalita offline
 - [x] Configurazione da file e test automatici GitHub
+- [x] App desktop PySide6
 
 ## Copiare il progetto in VS Code
 
@@ -57,6 +58,14 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
 ## Avviare una scansione
+
+Per aprire l'app desktop:
+
+```powershell
+python app.py
+```
+
+Nella finestra puoi scegliere rete, porte, modalita e opzioni. Premi **Start scan** per avviare il programma e guarda il log nella parte inferiore.
 
 Mostra tutti i comandi disponibili:
 
@@ -174,6 +183,9 @@ src/
 ├── rules.py         # regole IoT-specifiche
 ├── scoring.py       # calcolo livello di rischio
 └── report.py        # generazione report Markdown, HTML, CSV e JSON
+
+app.py               # interfaccia desktop PySide6
+config.example.json  # configurazione di esempio
 ```
 
 ## Stato del progetto
