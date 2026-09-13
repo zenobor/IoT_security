@@ -25,7 +25,12 @@ def main():
     for device in devices:
         ip = device["ip"]
         vendor = fingerprint.get_vendor(device["mac"])
-        ports = fingerprint.scan_ports(ip)
+        scan_errors = []
+        try:
+            ports = fingerprint.scan_ports(ip)
+        except RuntimeError as exc:
+            ports = []
+            scan_errors.append(str(exc))
         identity = fingerprint.identify_device(vendor, ports)
         open_ports = [port["port"] for port in ports if port.get("state") == "open"]
         iot_flags = {
@@ -45,7 +50,11 @@ def main():
                     )
                 )
 
-        nmap_findings = vuln_check.run_nmap_vuln_scripts(ip)
+        try:
+            nmap_findings = vuln_check.run_nmap_vuln_scripts(ip)
+        except RuntimeError as exc:
+            nmap_findings = []
+            scan_errors.append(str(exc))
         iot_flags["nmap_findings"] = nmap_findings
         result = {
             **device,
@@ -54,6 +63,7 @@ def main():
             "ports": ports,
             "vulnerabilities": vulnerabilities,
             "nmap_findings": nmap_findings,
+            "scan_errors": scan_errors,
             "iot_flags": iot_flags,
         }
         result["risk"] = scoring.calculate_risk(vulnerabilities, iot_flags)

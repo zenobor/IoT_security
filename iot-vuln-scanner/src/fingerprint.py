@@ -65,7 +65,12 @@ def scan_ports(ip: str, arguments: str = "-sV") -> list[dict]:
             "python-nmap non e installato. Esegui: pip install -r requirements.txt"
         ) from exc
 
-    scanner = nmap.PortScanner()
+    try:
+        scanner = nmap.PortScanner()
+    except nmap.nmap.PortScannerError as exc:
+        raise RuntimeError(
+            "Nmap program was not found. Install Nmap and reopen PowerShell."
+        ) from exc
     scanner.scan(hosts=ip, arguments=arguments)
 
     if ip not in scanner.all_hosts():

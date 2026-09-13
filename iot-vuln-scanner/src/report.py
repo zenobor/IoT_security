@@ -12,75 +12,57 @@ def _clean(value: object) -> str:
 
 def _test_summary(device: dict) -> list[str]:
     flags = device.get("iot_flags", {})
-    return [
-        "ARP discovery: device answered an ARP request",
-        "Nmap service scan: checked open ports and tried to read service/product versions",
-        "Telnet check: port 23 is " + ("open" if flags.get("telnet_open") else "not open"),
-        "UPnP check: port 1900 or 5000 is " + ("open" if flags.get("upnp_exposed") else "not open"),
-        "Default credential check: "
-        + ("vendor has known credentials to review" if flags.get("default_credentials") else "no matching vendor entry"),
-        "NVD lookup: "
-        + (f"{len(device.get('vulnerabilities', []))} possible CVE result(s)" if device.get("vulnerabilities") else "no CVE results"),
-        "Nmap vulnerability scripts: "
-        + (f"{len(device.get('nmap_findings', []))} finding(s)" if device.get("nmap_findings") else "no findings"),
+    checks = [
+        "ARP: found",
+        "Telnet: open" if flags.get("telnet_open") else "Telnet: closed",
+        "UPnP: open" if flags.get("upnp_exposed") else "UPnP: not found",
+        "Default credentials: review needed" if flags.get("default_credentials") else "Default credentials: no vendor match",
     ]
+    if device.get("scan_errors"):
+        checks.append("Nmap: unavailable")
+    else:
+        checks.append("Nmap: completed")
+    return checks
 
 
 def generate_report(devices: list[dict], output_path: str) -> None:
     """Scrive un report Markdown riassuntivo dei dispositivi e delle vulnerabilità trovate."""
     lines = [
-        "# IoT Vulnerability Scan",
+        "# IoT Scan Report",
         "",
-        f"Devices found: {len(devices)}",
+        f"Found **{len(devices)}** devices on the network.",
         "",
-        "| IP | Type | Vendor | Model | Open ports | Risk |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "The scan finds devices with ARP, checks their network services with Nmap, "
+        "and looks for common IoT security problems.",
+        "",
     ]
 
     for device in devices:
-        ports = device.get("ports", [])
-        open_ports = ", ".join(str(port.get("port")) for port in ports)
-        lines.append(
-            "| "
-            + " | ".join(
-                _clean(
-                    value
-                )
-                for value in (
-                    device.get("ip", ""),
-                    device.get("identity", {}).get("type", "Unknown device"),
-                    device.get("identity", {}).get("vendor", device.get("vendor", "Unknown")),
-                    device.get("identity", {}).get("model", "Unknown model"),
-                    open_ports or "none",
-                    device.get("risk", "low"),
-                )
-            )
-            + " |"
-        )
-
-    lines.extend(["", "## Details", ""])
-    for device in devices:
+        identity = device.get("identity", {})
+        open_ports = [
+            f"{port.get('port')} ({port.get('service', 'unknown')})"
+            for port in device.get("ports", [])
+            if port.get("state") == "open"
+        ]
         lines.extend(
             [
-                f"### {_clean(device.get('ip', 'unknown'))}",
-                f"- MAC address: {_clean(device.get('mac', 'unknown'))}",
-                f"- What this device is: {_clean(device.get('identity', {}).get('type', 'Unknown device'))}",
-                f"- Vendor: {_clean(device.get('identity', {}).get('vendor', 'Unknown vendor'))}",
-                f"- Model: {_clean(device.get('identity', {}).get('model', 'Unknown model'))}",
-                f"- Version: {_clean(device.get('identity', {}).get('version', 'Unknown version'))}",
-                f"- Identification confidence: {_clean(device.get('identity', {}).get('confidence', 'unknown'))}",
-                f"- IoT flags: {_clean(device.get('iot_flags', {}))}",
-                f"- Nmap findings: {_clean(device.get('nmap_findings', []))}",
+                f"## {_clean(device.get('ip', 'unknown'))} - {_clean(identity.get('type', 'Unknown device'))}",
+                f"**Vendor:** {_clean(identity.get('vendor', 'Unknown vendor'))}  ",
+                f"**Model:** {_clean(identity.get('model', 'Unknown model'))}  ",
+                f"**Risk:** {_clean(device.get('risk', 'low').upper())}  ",
+                f"**Open ports:** {_clean(', '.join(open_ports) or 'none detected')}",
                 "",
-                "#### Tests performed",
-                *[f"- {test}" for test in _test_summary(device)],
+                f"**Checks:** {_clean('; '.join(_test_summary(device)))}",
             ]
         )
-        for vulnerability in device.get("vulnerabilities", []):
-            lines.append(
-                f"- {vulnerability.get('id', 'CVE-unknown')}: "
-                f"{_clean(vulnerability.get('description', ''))}"
-            )
+        vulnerabilities = device.get("vulnerabilities", [])
+        if vulnerabilities:
+            lines.extend(["", "**Possible vulnerabilities:**"])
+            for vulnerability in vulnerabilities:
+                lines.append(
+                    f"- {vulnerability.get('id', 'CVE-unknown')}: "
+                    f"{_clean(vulnerability.get('description', ''))}"
+                )
         lines.append("")
 
     path = Path(output_path)

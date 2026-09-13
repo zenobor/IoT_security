@@ -4,7 +4,8 @@ from src import discovery
 
 
 def test_scan_network_returns_arp_answers(monkeypatch):
-    def fake_srp(request, timeout, verbose):
+    def fake_srp(request, iface, timeout, verbose):
+        assert iface
         assert timeout == 3
         assert verbose is False
         return [

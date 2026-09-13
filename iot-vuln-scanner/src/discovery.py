@@ -3,6 +3,9 @@ discovery.py
 Trova i dispositivi attivi sulla rete locale (scansione ARP).
 """
 
+import ipaddress
+
+from scapy.config import conf
 from scapy.layers.l2 import ARP, Ether
 from scapy.sendrecv import srp
 
@@ -19,7 +22,9 @@ def scan_network(ip_range: str, timeout: int = 2) -> list[dict[str, str]]:
         Lista di dict, es: [{"ip": "192.168.1.5", "mac": "AA:BB:CC:..."}]
     """
     request = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=ip_range)
-    answered, _ = srp(request, timeout=timeout, verbose=False)
+    network_address = str(ipaddress.ip_network(ip_range, strict=False).network_address)
+    interface, _, _ = conf.route.route(network_address)
+    answered, _ = srp(request, iface=interface, timeout=timeout, verbose=False)
 
     return [
         {"ip": received.psrc, "mac": received.hwsrc}
