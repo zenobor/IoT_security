@@ -34,6 +34,11 @@ def calculate_risk(vulnerabilities: list[dict], iot_flags: dict) -> str:
         weight for flag, weight in flag_points.items() if iot_flags.get(flag, False)
     )
     points += min(len(iot_flags.get("nmap_findings", [])), 3)
+    points += sum(
+        1
+        for check in iot_flags.get("deep_checks", [])
+        if check.get("status") == "warning"
+    )
 
     if points >= 7:
         return "high"

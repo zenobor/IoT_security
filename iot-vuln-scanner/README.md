@@ -16,6 +16,7 @@ Questo strumento va usato **esclusivamente sulla propria rete o su reti per cui 
 - [x] Riepilogo del rischio e consigli pratici
 - [x] Export JSON, HTML e CSV
 - [x] Hostname, porte personalizzate e modalita offline
+- [x] Controlli approfonditi non invasivi su HTTP, HTTPS e TLS
 - [x] Configurazione da file e test automatici GitHub
 - [x] App desktop PySide6
 
@@ -90,6 +91,8 @@ Per una scansione piu completa, che esegue anche gli script di vulnerabilita Nma
 ```powershell
 python main.py --mode full --network 192.168.1.0/24 --output scan_report.md
 ```
+
+La modalita `full` esegue anche richieste di sola lettura sui pannelli web trovati. Controlla risposta HTTP, header di sicurezza e problemi TLS. Non prova password, non esegue login e non modifica i dispositivi.
 
 Aggiungi `--nvd` se vuoi interrogare anche il database NVD per le CVE. Questa opzione puo richiedere piu tempo e una connessione Internet.
 

@@ -9,7 +9,7 @@ import re
 import requests
 
 from src import discovery
-from src import fingerprint, report, rules, scoring, vuln_check
+from src import deep_checks, fingerprint, report, rules, scoring, vuln_check
 
 
 def _load_config(path: str | None) -> dict:
@@ -117,12 +117,15 @@ def main():
                     vulnerabilities.extend(nvd_cache[cache_key])
 
         nmap_findings = []
+        deep_findings = []
         if args.mode == "full":
             try:
                 nmap_findings = vuln_check.run_nmap_vuln_scripts(ip)
             except RuntimeError as exc:
                 scan_errors.append(str(exc))
+            deep_findings = deep_checks.run_deep_checks(ip, open_ports)
         iot_flags["nmap_findings"] = nmap_findings
+        iot_flags["deep_checks"] = deep_findings
         result = {
             **device,
             "hostname": hostname,
@@ -131,6 +134,7 @@ def main():
             "ports": ports,
             "vulnerabilities": vulnerabilities,
             "nmap_findings": nmap_findings,
+            "deep_checks": deep_findings,
             "scan_errors": scan_errors,
             "iot_flags": iot_flags,
         }

@@ -85,6 +85,7 @@ def generate_report(devices: list[dict], output_path: str) -> None:
         "- Nmap: checks open ports and service versions.",
         "- IoT rules: checks Telnet, UPnP and known default credentials.",
         "- NVD/Nmap scripts: looks for possible known vulnerabilities.",
+        "- Full mode: checks web panels, TLS and security headers without logging in.",
         "",
         "## Devices",
         "",
@@ -119,7 +120,11 @@ def generate_report(devices: list[dict], output_path: str) -> None:
             + " |"
         )
         vulnerabilities = device.get("vulnerabilities", [])
-        if risk in {"HIGH", "MEDIUM"} or vulnerabilities or device.get("scan_errors"):
+        deep_findings = device.get("deep_checks", [])
+        has_deep_warning = any(
+            check.get("status") == "warning" for check in deep_findings
+        )
+        if risk in {"HIGH", "MEDIUM"} or vulnerabilities or has_deep_warning or device.get("scan_errors"):
             attention_devices.append((device, vulnerabilities))
 
     if attention_devices:
@@ -135,6 +140,12 @@ def generate_report(devices: list[dict], output_path: str) -> None:
                 lines.append(
                     f"- {_clean(vulnerability.get('id', 'CVE-unknown'))}: "
                     f"{_clean(vulnerability.get('description', ''))}"
+                )
+            for check in deep_findings:
+                lines.append(
+                    f"- {_clean(check.get('name', 'Deep check'))}: "
+                    f"{_clean(check.get('status', 'info'))}; "
+                    f"{_clean(check.get('evidence', ''))}"
                 )
             lines.append("")
 
