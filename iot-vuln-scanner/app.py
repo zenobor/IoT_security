@@ -1,11 +1,12 @@
 """Desktop interface for the IoT vulnerability scanner."""
 
 import os
+import json
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QProcess, QUrl, Qt
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -19,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QTableWidget,
+    QTableWidgetItem,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -37,6 +40,9 @@ class ScannerWindow(QMainWindow):
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.markdown_report = self.output_dir / "scan_report.md"
         self.html_report = self.output_dir / "scan_report.html"
+        self.csv_report = self.output_dir / "scan_results.csv"
+        self.json_report = self.output_dir / "scan_results.json"
+        self.cancel_requested = False
         self.process = QProcess(self)
         self.process.setWorkingDirectory(str(self.project_dir))
         self.process.readyReadStandardOutput.connect(self.read_process_output)
@@ -94,19 +100,36 @@ class ScannerWindow(QMainWindow):
         self.scan_button = QPushButton("Start scan")
         self.scan_button.setObjectName("scanButton")
         self.scan_button.clicked.connect(self.start_scan)
-        self.open_button = QPushButton("Open report")
-        self.open_button.clicked.connect(self.open_report)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.cancel_scan)
+        self.cancel_button.setEnabled(False)
+        self.open_button = QPushButton("Open HTML")
+        self.open_button.clicked.connect(lambda: self.open_report(self.html_report))
         self.open_button.setEnabled(False)
+        self.open_csv_button = QPushButton("Open CSV")
+        self.open_csv_button.clicked.connect(lambda: self.open_report(self.csv_report))
+        self.open_csv_button.setEnabled(False)
         actions.addWidget(self.scan_button)
+        actions.addWidget(self.cancel_button)
         actions.addWidget(self.open_button)
+        actions.addWidget(self.open_csv_button)
         actions.addStretch()
         layout.addLayout(actions)
 
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
+        self.results_table = QTableWidget(0, 6)
+        self.results_table.setHorizontalHeaderLabels(
+            ["IP", "Hostname", "Type", "Vendor", "Model", "Risk"]
+        )
+        self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.results_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.results_table, 1)
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
+        self.log_output.setMaximumHeight(150)
         layout.addWidget(self.log_output, 1)
         self.setCentralWidget(central)
 
@@ -114,8 +137,12 @@ class ScannerWindow(QMainWindow):
         if self.process.state() != QProcess.NotRunning:
             return
         self.log_output.clear()
+        self.results_table.setRowCount(0)
+        self.cancel_requested = False
         self.open_button.setEnabled(False)
+        self.open_csv_button.setEnabled(False)
         self.scan_button.setEnabled(False)
+        self.cancel_button.setEnabled(True)
         self.status_label.setText("Scanning...")
 
         scan_arguments = [
@@ -130,9 +157,9 @@ class ScannerWindow(QMainWindow):
             "--html-output",
             str(self.html_report),
             "--csv-output",
-            str(self.output_dir / "scan_results.csv"),
+            str(self.csv_report),
             "--json-output",
-            str(self.output_dir / "scan_results.json"),
+            str(self.json_report),
         ]
         if self.ports_input.text().strip():
             scan_arguments.extend(["--ports", self.ports_input.text().strip()])
@@ -158,20 +185,61 @@ class ScannerWindow(QMainWindow):
 
     def scan_finished(self, exit_code: int, _exit_status: QProcess.ExitStatus) -> None:
         self.scan_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        if self.cancel_requested:
+            self.status_label.setText("Scan cancelled.")
+            return
         if exit_code == 0:
+            self.load_results()
             self.status_label.setText("Scan finished. Reports are ready.")
             self.open_button.setEnabled(True)
+            self.open_csv_button.setEnabled(True)
         else:
             self.status_label.setText("Scan failed. Check the log.")
             QMessageBox.warning(self, "Scan failed", "The scanner returned an error.")
+
+    def cancel_scan(self) -> None:
+        if self.process.state() != QProcess.NotRunning:
+            self.cancel_requested = True
+            self.process.kill()
+            self.status_label.setText("Scan cancelled.")
+
+    def load_results(self) -> None:
+        try:
+            data = json.loads(self.json_report.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            self.status_label.setText("Scan finished, but results could not be loaded.")
+            return
+
+        devices = data.get("devices", [])
+        self.results_table.setRowCount(len(devices))
+        for row, device in enumerate(devices):
+            identity = device.get("identity", {})
+            values = [
+                device.get("ip", ""),
+                device.get("hostname", "Unknown hostname"),
+                identity.get("type", "Unknown device"),
+                identity.get("vendor", device.get("vendor", "Unknown vendor")),
+                identity.get("model", "Unknown model"),
+                device.get("risk", "low").upper(),
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(str(value))
+                if column == 5:
+                    colors = {"HIGH": "#b42318", "MEDIUM": "#b54708", "LOW": "#176b4d"}
+                    item.setForeground(QColor(colors.get(str(value), "#222222")))
+                self.results_table.setItem(row, column, item)
+        self.results_table.resizeColumnsToContents()
 
     def process_error(self, _error: QProcess.ProcessError) -> None:
         self.scan_button.setEnabled(True)
         self.status_label.setText("Could not start the scanner.")
         self.log_output.appendPlainText(self.process.errorString())
 
-    def open_report(self) -> None:
-        report_path = self.html_report if self.html_report.exists() else self.markdown_report
+    def open_report(self, requested_path: Path | None = None) -> None:
+        report_path = requested_path or self.html_report
+        if not report_path.exists() and requested_path is not None:
+            report_path = self.markdown_report
         if not report_path.exists():
             QMessageBox.information(self, "Report not found", "Run a scan first.")
             return
