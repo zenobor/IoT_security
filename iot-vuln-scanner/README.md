@@ -19,6 +19,8 @@ Questo strumento va usato **esclusivamente sulla propria rete o su reti per cui 
 - [x] Controlli approfonditi non invasivi su HTTP, HTTPS e TLS
 - [x] Configurazione da file e test automatici GitHub
 - [x] App desktop PySide6
+- [x] Network security score e mappa dispositivi
+- [x] Finestra dettagli dispositivo e diagnostica Nmap/Npcap
 
 ## Copiare il progetto in VS Code
 
@@ -66,7 +68,7 @@ Per aprire l'app desktop:
 python app.py
 ```
 
-Nella finestra puoi scegliere rete, porte, modalita e opzioni. Premi **Start scan** per avviare il programma, guarda l'avanzamento nel log, i dispositivi nella tabella **Devices** e il report completo nella tab **Report**. Puoi anche premere **Cancel** durante una scansione. Quando usi l'`.exe`, i report vengono salvati in `C:\Users\TUO_UTENTE\IoTScannerReports`.
+Nella finestra puoi scegliere rete, porte, modalita e opzioni. Premi **Start scan** per avviare il programma, guarda il punteggio globale, i dispositivi nella tab **Devices**, la mappa nella tab **Network map** e il report completo nella tab **Report**. Fai doppio click su un dispositivo per vedere i dettagli. La tab **Diagnostics** controlla Nmap e Npcap. Puoi anche premere **Cancel** durante una scansione. Quando usi l'`.exe`, i report vengono salvati in `C:\Users\TUO_UTENTE\IoTScannerReports`.
 
 Mostra tutti i comandi disponibili:
 

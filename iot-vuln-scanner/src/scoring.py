@@ -45,3 +45,13 @@ def calculate_risk(vulnerabilities: list[dict], iot_flags: dict) -> str:
     if points >= 3:
         return "medium"
     return "low"
+
+
+def calculate_network_score(devices: list[dict]) -> int:
+    """Return a simple 0-100 score for the scanned network."""
+    if not devices:
+        return 100
+
+    penalties = {"high": 35, "medium": 18, "low": 3}
+    total_penalty = sum(penalties.get(device.get("risk", "low"), 3) for device in devices)
+    return max(0, round(100 - (total_penalty / len(devices) * 2)))

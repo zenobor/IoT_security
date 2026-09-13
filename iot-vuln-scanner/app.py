@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -26,10 +28,14 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QSpinBox,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
+
+from src import diagnostics, scoring
 
 
 class ScannerWindow(QMainWindow):
@@ -47,6 +53,7 @@ class ScannerWindow(QMainWindow):
         self.csv_report = self.output_dir / "scan_results.csv"
         self.json_report = self.output_dir / "scan_results.json"
         self.cancel_requested = False
+        self.devices = []
         self.process = QProcess(self)
         self.process.setWorkingDirectory(str(self.project_dir))
         self.process.readyReadStandardOutput.connect(self.read_process_output)
@@ -131,6 +138,9 @@ class ScannerWindow(QMainWindow):
         actions.addWidget(self.cancel_button)
         actions.addWidget(self.open_button)
         actions.addWidget(self.open_csv_button)
+        self.diagnostics_button = QPushButton("System check")
+        self.diagnostics_button.clicked.connect(self.show_diagnostics)
+        actions.addWidget(self.diagnostics_button)
         actions.addStretch()
         layout.addLayout(actions)
 
@@ -143,6 +153,15 @@ class ScannerWindow(QMainWindow):
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(False)
         layout.addWidget(self.progress_bar)
+        score_box = QGroupBox("Network security score")
+        score_layout = QHBoxLayout(score_box)
+        self.score_label = QLabel("Not scanned")
+        self.score_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #52616b;")
+        self.score_hint = QLabel("Run a scan to calculate the score.")
+        score_layout.addWidget(self.score_label)
+        score_layout.addWidget(self.score_hint)
+        score_layout.addStretch()
+        layout.addWidget(score_box)
         self.tabs = QTabWidget()
         devices_page = QWidget()
         devices_layout = QVBoxLayout(devices_page)
@@ -152,9 +171,21 @@ class ScannerWindow(QMainWindow):
         )
         self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.results_table.cellDoubleClicked.connect(
+            lambda row, _column: self.show_device_details(self.devices[row])
+        )
         self.results_table.horizontalHeader().setStretchLastSection(True)
         devices_layout.addWidget(self.results_table)
         self.tabs.addTab(devices_page, "Devices")
+
+        map_page = QWidget()
+        map_layout = QVBoxLayout(map_page)
+        map_layout.addWidget(QLabel("Simple view of the devices found on the selected network."))
+        self.network_map = QTreeWidget()
+        self.network_map.setHeaderLabels(["Device", "IP", "Risk"])
+        self.network_map.itemDoubleClicked.connect(self.show_tree_details)
+        map_layout.addWidget(self.network_map)
+        self.tabs.addTab(map_page, "Network map")
 
         report_page = QWidget()
         report_layout = QVBoxLayout(report_page)
@@ -169,6 +200,12 @@ class ScannerWindow(QMainWindow):
         self.log_output.setReadOnly(True)
         log_layout.addWidget(self.log_output)
         self.tabs.addTab(log_page, "Log")
+        diagnostics_page = QWidget()
+        diagnostics_layout = QVBoxLayout(diagnostics_page)
+        self.diagnostics_view = QPlainTextEdit()
+        self.diagnostics_view.setReadOnly(True)
+        diagnostics_layout.addWidget(self.diagnostics_view)
+        self.tabs.addTab(diagnostics_page, "Diagnostics")
         layout.addWidget(self.tabs, 1)
         self.statusBar().showMessage("Ready")
         self.setCentralWidget(central)
@@ -178,6 +215,8 @@ class ScannerWindow(QMainWindow):
             return
         self.log_output.clear()
         self.results_table.setRowCount(0)
+        self.network_map.clear()
+        self.devices = []
         self.report_view.clear()
         self.tabs.setCurrentIndex(0)
         self.cancel_requested = False
@@ -263,9 +302,16 @@ class ScannerWindow(QMainWindow):
             return
 
         devices = data.get("devices", [])
+        self.devices = devices
         self.results_table.setRowCount(len(devices))
+        self.network_map.clear()
+        network_root = QTreeWidgetItem([self.network_input.text(), "", ""])
+        self.network_map.addTopLevelItem(network_root)
+        risk_counts = {"high": 0, "medium": 0, "low": 0}
         for row, device in enumerate(devices):
             identity = device.get("identity", {})
+            risk = device.get("risk", "low").lower()
+            risk_counts[risk] = risk_counts.get(risk, 0) + 1
             values = [
                 device.get("ip", ""),
                 device.get("hostname", "Unknown hostname"),
@@ -280,7 +326,28 @@ class ScannerWindow(QMainWindow):
                     colors = {"HIGH": "#b42318", "MEDIUM": "#b54708", "LOW": "#176b4d"}
                     item.setForeground(QColor(colors.get(str(value), "#222222")))
                 self.results_table.setItem(row, column, item)
+            map_item = QTreeWidgetItem(
+                [
+                    identity.get("type", "Unknown device"),
+                    device.get("ip", ""),
+                    risk.upper(),
+                ]
+            )
+            map_item.setData(0, Qt.UserRole, row)
+            network_root.addChild(map_item)
+        network_root.setExpanded(True)
         self.results_table.resizeColumnsToContents()
+        score = scoring.calculate_network_score(devices)
+        self.score_label.setText(f"{score}/100")
+        score_color = "#176b4d" if score >= 75 else "#b54708" if score >= 50 else "#b42318"
+        self.score_label.setStyleSheet(
+            f"font-size: 18px; font-weight: bold; color: {score_color};"
+        )
+        self.score_hint.setText(
+            f"{risk_counts.get('high', 0)} high, "
+            f"{risk_counts.get('medium', 0)} medium, "
+            f"{risk_counts.get('low', 0)} low"
+        )
 
     def load_report(self) -> None:
         try:
@@ -289,7 +356,55 @@ class ScannerWindow(QMainWindow):
             self.report_view.setPlainText(f"Could not load report: {exc}")
             return
         self.report_view.setMarkdown(markdown)
-        self.tabs.setCurrentIndex(1)
+        self.tabs.setCurrentIndex(2)
+
+    def show_tree_details(self, item: QTreeWidgetItem, _column: int) -> None:
+        row = item.data(0, Qt.UserRole)
+        if row is not None and row < len(self.devices):
+            self.show_device_details(self.devices[row])
+
+    def show_device_details(self, device: dict) -> None:
+        identity = device.get("identity", {})
+        ports = device.get("ports", [])
+        open_ports = ", ".join(
+            f"{port.get('port')} ({port.get('service', 'unknown')})"
+            for port in ports
+            if port.get("state") == "open"
+        ) or "None detected"
+        details = QDialog(self)
+        details.setWindowTitle(f"Device details - {device.get('ip', 'unknown')}")
+        details.resize(620, 480)
+        layout = QVBoxLayout(details)
+        summary = QPlainTextEdit()
+        summary.setReadOnly(True)
+        summary.setPlainText(
+            f"IP: {device.get('ip', 'unknown')}\n"
+            f"Hostname: {device.get('hostname', 'Unknown hostname')}\n"
+            f"MAC: {device.get('mac', 'unknown')}\n"
+            f"Type: {identity.get('type', 'Unknown device')}\n"
+            f"Vendor: {identity.get('vendor', device.get('vendor', 'Unknown vendor'))}\n"
+            f"Model: {identity.get('model', 'Unknown model')}\n"
+            f"Risk: {device.get('risk', 'low').upper()}\n"
+            f"Open ports: {open_ports}\n\n"
+            f"IoT flags: {device.get('iot_flags', {})}\n"
+            f"Vulnerabilities: {len(device.get('vulnerabilities', []))}\n"
+            f"Deep checks: {len(device.get('deep_checks', []))}"
+        )
+        layout.addWidget(summary)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(details.reject)
+        layout.addWidget(buttons)
+        details.exec()
+
+    def show_diagnostics(self) -> None:
+        checks = diagnostics.check_system()
+        text = "Nmap / Npcap diagnostics\n=========================\n\n"
+        text += "\n".join(
+            f"{check['name']}: {check['status']} - {check['details']}"
+            for check in checks
+        )
+        self.diagnostics_view.setPlainText(text)
+        self.tabs.setCurrentIndex(4)
 
     def process_error(self, _error: QProcess.ProcessError) -> None:
         self.scan_button.setEnabled(True)

@@ -1,6 +1,6 @@
 from src.fingerprint import identify_device
 from src.report import generate_csv_report, generate_html_report, generate_report
-from src.scoring import calculate_risk
+from src.scoring import calculate_network_score, calculate_risk
 
 
 def test_calculate_risk_levels():
@@ -10,6 +10,12 @@ def test_calculate_risk_levels():
         [{"severity": "CRITICAL", "score": 9.8}],
         {"default_credentials": True},
     ) == "high"
+
+
+def test_calculate_network_score():
+    assert calculate_network_score([]) == 100
+    assert calculate_network_score([{"risk": "low"}]) == 94
+    assert calculate_network_score([{"risk": "high"}]) == 30
 
 
 def test_identify_camera_from_services():
