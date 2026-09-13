@@ -14,7 +14,7 @@ Questo strumento va usato **esclusivamente sulla propria rete o su reti per cui 
 - [x] Regole specifiche IoT (Telnet aperto, credenziali default, UPnP esposto)
 - [x] Report finale con livello di rischio per dispositivo
 - [x] Riepilogo del rischio e consigli pratici
-- [x] Export JSON e confronto con la scansione precedente
+- [x] Export JSON
 
 ## Copiare il progetto in VS Code
 
@@ -94,11 +94,10 @@ I parametri significano:
 - `--timeout`: secondi di attesa per le risposte ARP.
 - `--output`: nome del report Markdown da creare.
 - `--json-output`: file JSON opzionale per usare i risultati in altri programmi.
-- `--history`: file usato per ricordare i dispositivi della scansione precedente. Il valore predefinito e `scan_history.json`.
 - `--mode`: `quick` (predefinita) o `full`.
 - `--nvd`: abilita le richieste alla NVD API.
 
-Il programma trova i dispositivi, legge vendor e porte, controlla le vulnerabilita e salva il risultato in `scan_report.md`. Il report mostra anche quanti dispositivi hanno rischio alto, medio o basso, consigli pratici e quali dispositivi sono nuovi, rimossi o cambiati rispetto alla scansione precedente.
+Il programma trova i dispositivi, legge vendor e porte, controlla le vulnerabilita e salva il risultato in `scan_report.md`. Il report mostra anche quanti dispositivi hanno rischio alto, medio o basso e consigli pratici.
 
 Per eseguire i test installa prima `pytest`:
 
@@ -134,8 +133,7 @@ src/
 ├── vuln_check.py    # controllo CVE note
 ├── rules.py         # regole IoT-specifiche
 ├── scoring.py       # calcolo livello di rischio
-├── report.py        # generazione report Markdown e JSON
-└── history.py       # confronto tra scansioni
+└── report.py        # generazione report Markdown e JSON
 ```
 
 ## Stato del progetto

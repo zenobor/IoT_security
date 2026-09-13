@@ -54,14 +54,11 @@ def _risk_summary(devices: list[dict]) -> str:
     )
 
 
-def generate_json_report(devices: list[dict], output_path: str, history: dict | None = None) -> None:
-    """Write the scan results as JSON for scripts and future comparisons."""
+def generate_json_report(devices: list[dict], output_path: str) -> None:
+    """Write the current scan results as JSON for scripts."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = {"devices": devices}
-    if history is not None:
-        data["history"] = history
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    path.write_text(json.dumps({"devices": devices}, indent=2), encoding="utf-8")
 
 
 def generate_report(devices: list[dict], output_path: str) -> None:

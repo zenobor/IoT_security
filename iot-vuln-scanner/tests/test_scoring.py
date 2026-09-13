@@ -1,5 +1,4 @@
 from src.fingerprint import identify_device
-from src.history import compare_with_history, save_history
 from src.report import generate_report
 from src.scoring import calculate_risk
 
@@ -54,11 +53,3 @@ def test_generate_report(tmp_path):
     assert "192.168.1.10" in content
     assert "Test vendor" in content
 
-
-def test_history_detects_new_device(tmp_path):
-    history_path = tmp_path / "history.json"
-    save_history([], str(history_path))
-
-    changes = compare_with_history([{"ip": "192.168.1.20"}], str(history_path))
-
-    assert changes["new_devices"] == ["192.168.1.20"]
