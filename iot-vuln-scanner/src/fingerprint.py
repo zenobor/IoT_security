@@ -4,6 +4,7 @@ Identifica vendor, servizi e versioni per ogni dispositivo trovato.
 """
 
 import os
+import socket
 
 
 def _create_scanner(nmap):
@@ -26,6 +27,18 @@ def get_vendor(mac_address: str) -> str:
         return MacLookup().lookup(mac_address)
     except Exception:
         return "Unknown"
+
+
+def get_hostname(ip: str) -> str:
+    """Try to resolve a friendly hostname without failing the scan."""
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(1)
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except (OSError, socket.herror, socket.gaierror):
+        return "Unknown hostname"
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
 
 
 def identify_device(vendor: str, ports: list[dict]) -> dict[str, str]:
@@ -72,7 +85,8 @@ def identify_device(vendor: str, ports: list[dict]) -> dict[str, str]:
 
 def scan_ports(
     ip: str,
-    arguments: str = "-T4 --top-ports 100 --version-light --host-timeout 15s",
+    port_spec: str | None = None,
+    mode: str = "quick",
 ) -> list[dict]:
     """Ritorna porte aperte e servizi/versioni rilevati su un IP."""
     try:
@@ -88,6 +102,12 @@ def scan_ports(
         raise RuntimeError(
             "Nmap program was not found. Install Nmap and reopen PowerShell."
         ) from exc
+    if port_spec:
+        arguments = f"-T4 -p {port_spec} --version-light --host-timeout 15s"
+    elif mode == "full":
+        arguments = "-T4 -p- -sV --host-timeout 60s"
+    else:
+        arguments = "-T4 --top-ports 100 --version-light --host-timeout 15s"
     scanner.scan(hosts=ip, arguments=arguments)
 
     if ip not in scanner.all_hosts():

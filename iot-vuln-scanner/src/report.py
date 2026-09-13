@@ -5,6 +5,8 @@ Genera il report finale (Markdown) con i risultati della scansione.
 
 from pathlib import Path
 import json
+import csv
+import html
 
 
 def _clean(value: object) -> str:
@@ -16,6 +18,9 @@ def _test_summary(device: dict) -> list[str]:
     checks = [
         "ARP: found",
         "Telnet: open" if flags.get("telnet_open") else "Telnet: closed",
+        "FTP: open" if flags.get("ftp_open") else "FTP: closed",
+        "SSH: open" if flags.get("ssh_open") else "SSH: not found",
+        "HTTP: insecure" if flags.get("insecure_http") else "HTTP: not flagged",
         "UPnP: open" if flags.get("upnp_exposed") else "UPnP: not found",
         "Default credentials: review needed" if flags.get("default_credentials") else "Default credentials: no vendor match",
     ]
@@ -31,6 +36,10 @@ def _recommendations(device: dict) -> list[str]:
     recommendations = []
     if flags.get("telnet_open"):
         recommendations.append("Disable Telnet and use SSH instead.")
+    if flags.get("ftp_open"):
+        recommendations.append("Disable FTP or use encrypted SFTP.")
+    if flags.get("insecure_http"):
+        recommendations.append("Use HTTPS for the device web panel.")
     if flags.get("upnp_exposed"):
         recommendations.append("Disable UPnP if it is not needed.")
     if flags.get("default_credentials"):
@@ -100,7 +109,7 @@ def generate_report(devices: list[dict], output_path: str) -> None:
             + " | ".join(
                 _clean(value)
                 for value in (
-                    device.get("ip", "unknown"),
+                    f"{device.get('ip', 'unknown')} ({device.get('hostname', 'Unknown hostname')})",
                     device_type,
                     f"{vendor} / {model}",
                     ", ".join(open_ports) or "none",
@@ -132,3 +141,67 @@ def generate_report(devices: list[dict], output_path: str) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def generate_html_report(devices: list[dict], output_path: str) -> None:
+    """Write a small standalone HTML report."""
+    rows = []
+    for device in devices:
+        identity = device.get("identity", {})
+        ports = ", ".join(
+            f"{port.get('port')} ({port.get('service', 'unknown')})"
+            for port in device.get("ports", [])
+            if port.get("state") == "open"
+        ) or "none"
+        rows.append(
+            "<tr>"
+            + "".join(
+                f"<td>{html.escape(str(value))}</td>"
+                for value in (
+                    device.get("ip", "unknown"),
+                    device.get("hostname", "Unknown hostname"),
+                    identity.get("type", "Unknown device"),
+                    identity.get("vendor", device.get("vendor", "Unknown vendor")),
+                    identity.get("model", "Unknown model"),
+                    ports,
+                    device.get("risk", "low").upper(),
+                )
+            )
+            + "</tr>"
+        )
+    document = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>IoT Scan Report</title>
+<style>body{font-family:Arial,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#222}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:.55rem;text-align:left}th{background:#f0f0f0}.high{color:#a00}.medium{color:#a60}.low{color:#176b2c}</style>
+</head><body><h1>IoT Scan Report</h1>
+<p>Devices found: """ + str(len(devices)) + """</p><table><thead><tr><th>IP</th><th>Hostname</th><th>Type</th><th>Vendor</th><th>Model</th><th>Ports</th><th>Risk</th></tr></thead><tbody>""" + "".join(rows) + """</tbody></table>
+</body></html>"""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(document, encoding="utf-8")
+
+
+def generate_csv_report(devices: list[dict], output_path: str) -> None:
+    """Write one simple CSV row per device."""
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["ip", "hostname", "type", "vendor", "model", "open_ports", "risk"])
+        for device in devices:
+            identity = device.get("identity", {})
+            ports = ",".join(
+                str(port.get("port"))
+                for port in device.get("ports", [])
+                if port.get("state") == "open"
+            )
+            writer.writerow(
+                [
+                    device.get("ip", ""),
+                    device.get("hostname", "Unknown hostname"),
+                    identity.get("type", "Unknown device"),
+                    identity.get("vendor", device.get("vendor", "Unknown vendor")),
+                    identity.get("model", "Unknown model"),
+                    ports,
+                    device.get("risk", "low"),
+                ]
+            )

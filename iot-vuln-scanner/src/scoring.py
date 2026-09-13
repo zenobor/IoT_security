@@ -24,6 +24,9 @@ def calculate_risk(vulnerabilities: list[dict], iot_flags: dict) -> str:
 
     flag_points = {
         "telnet_open": 3,
+        "ftp_open": 2,
+        "ssh_open": 1,
+        "insecure_http": 2,
         "default_credentials": 4,
         "upnp_exposed": 2,
     }

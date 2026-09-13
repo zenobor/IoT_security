@@ -14,6 +14,21 @@ def check_telnet_open(open_ports: list[int]) -> bool:
     return 23 in open_ports
 
 
+def check_ftp_open(open_ports: list[int]) -> bool:
+    """Return True when the unencrypted FTP port is open."""
+    return 21 in open_ports
+
+
+def check_ssh_open(open_ports: list[int]) -> bool:
+    """Return True when SSH is exposed to the scanned network."""
+    return 22 in open_ports
+
+
+def check_insecure_http(open_ports: list[int]) -> bool:
+    """Return True when HTTP is open without HTTPS being detected."""
+    return 80 in open_ports and 443 not in open_ports
+
+
 def check_default_credentials(vendor: str, ip: str) -> bool:
     """Segnala se esistono credenziali di default note per il vendor.
 

@@ -3,6 +3,8 @@ Entry point del tool.
 """
 
 import argparse
+import json
+import re
 
 import requests
 
@@ -10,11 +12,42 @@ from src import discovery
 from src import fingerprint, report, rules, scoring, vuln_check
 
 
+def _load_config(path: str | None) -> dict:
+    if not path:
+        return {}
+    try:
+        with open(path, encoding="utf-8") as file:
+            config = json.load(file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Could not read config file: {exc}") from exc
+    if not isinstance(config, dict):
+        raise SystemExit("Config file must contain a JSON object")
+    return config
+
+
+def _validate_ports(port_spec: str | None) -> str | None:
+    if port_spec is None:
+        return None
+    if not re.fullmatch(r"[0-9,-]+", port_spec):
+        raise SystemExit("Ports must contain only numbers, commas and dashes")
+    return port_spec
+
+
 def main():
+    config_parser = argparse.ArgumentParser(add_help=False)
+    config_parser.add_argument("--config")
+    config_args, _ = config_parser.parse_known_args()
+    config = _load_config(config_args.config)
+
     parser = argparse.ArgumentParser(description="Scan an authorized local IoT network")
+    parser.set_defaults(**config)
+    parser.add_argument("--config", default=config_args.config)
     parser.add_argument("--network", default="192.168.1.0/24")
     parser.add_argument("--timeout", type=int, default=2)
+    parser.add_argument("--ports", help="Ports to scan, for example 22,80,443,554")
     parser.add_argument("--output", default="scan_report.md")
+    parser.add_argument("--html-output", help="Also save an HTML report")
+    parser.add_argument("--csv-output", help="Also save a CSV report")
     parser.add_argument("--json-output", help="Also save the results as JSON")
     parser.add_argument(
         "--mode",
@@ -27,7 +60,14 @@ def main():
         action="store_true",
         help="Query the NVD API for possible CVEs",
     )
+    parser.add_argument(
+        "--offline",
+        action="store_true",
+        help="Do not use NVD or other Internet services",
+    )
+    parser.set_defaults(**config)
     args = parser.parse_args()
+    port_spec = _validate_ports(args.ports)
 
     ip_range = args.network
     print(f"Scansione della rete {ip_range}...")
@@ -41,9 +81,10 @@ def main():
         ip = device["ip"]
         print(f"Analysing device {number}/{len(devices)}: {ip}")
         vendor = fingerprint.get_vendor(device["mac"])
+        hostname = "Offline mode" if args.offline else fingerprint.get_hostname(ip)
         scan_errors = []
         try:
-            ports = fingerprint.scan_ports(ip)
+            ports = fingerprint.scan_ports(ip, port_spec=port_spec, mode=args.mode)
         except RuntimeError as exc:
             ports = []
             scan_errors.append(str(exc))
@@ -51,12 +92,15 @@ def main():
         open_ports = [port["port"] for port in ports if port.get("state") == "open"]
         iot_flags = {
             "telnet_open": rules.check_telnet_open(open_ports),
+            "ftp_open": rules.check_ftp_open(open_ports),
+            "ssh_open": rules.check_ssh_open(open_ports),
+            "insecure_http": rules.check_insecure_http(open_ports),
             "upnp_exposed": rules.check_upnp_exposed(open_ports),
             "default_credentials": rules.check_default_credentials(vendor, ip),
         }
 
         vulnerabilities = []
-        if args.nvd:
+        if args.nvd and not args.offline:
             for port in ports:
                 product = port.get("product", "") or port.get("service", "")
                 version = port.get("version", "")
@@ -81,6 +125,7 @@ def main():
         iot_flags["nmap_findings"] = nmap_findings
         result = {
             **device,
+            "hostname": hostname,
             "vendor": vendor,
             "identity": identity,
             "ports": ports,
@@ -95,6 +140,10 @@ def main():
     report.generate_report(results, args.output)
     if args.json_output:
         report.generate_json_report(results, args.json_output)
+    if args.html_output:
+        report.generate_html_report(results, args.html_output)
+    if args.csv_output:
+        report.generate_csv_report(results, args.csv_output)
     print(f"Report salvato in {args.output}")
 
 

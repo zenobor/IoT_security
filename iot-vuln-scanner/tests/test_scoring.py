@@ -1,5 +1,5 @@
 from src.fingerprint import identify_device
-from src.report import generate_report
+from src.report import generate_csv_report, generate_html_report, generate_report
 from src.scoring import calculate_risk
 
 
@@ -52,4 +52,22 @@ def test_generate_report(tmp_path):
     content = output_path.read_text(encoding="utf-8")
     assert "192.168.1.10" in content
     assert "Test vendor" in content
+
+
+def test_generate_html_and_csv_reports(tmp_path):
+    device = {
+        "ip": "192.168.1.10",
+        "hostname": "camera.local",
+        "identity": {"type": "IP camera", "vendor": "Test", "model": "Cam"},
+        "ports": [{"port": 554, "service": "rtsp", "state": "open"}],
+        "risk": "medium",
+    }
+    html_path = tmp_path / "report.html"
+    csv_path = tmp_path / "report.csv"
+
+    generate_html_report([device], str(html_path))
+    generate_csv_report([device], str(csv_path))
+
+    assert "camera.local" in html_path.read_text(encoding="utf-8")
+    assert "192.168.1.10" in csv_path.read_text(encoding="utf-8")
 

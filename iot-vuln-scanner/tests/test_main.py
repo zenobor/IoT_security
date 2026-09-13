@@ -10,7 +10,7 @@ def test_quick_mode_skips_slow_checks(monkeypatch, tmp_path):
     ]
     monkeypatch.setattr(main.discovery, "scan_network", lambda *args, **kwargs: devices)
     monkeypatch.setattr(main.fingerprint, "get_vendor", lambda mac: "Test vendor")
-    monkeypatch.setattr(main.fingerprint, "scan_ports", lambda ip: [])
+    monkeypatch.setattr(main.fingerprint, "scan_ports", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         main.vuln_check,
         "run_nmap_vuln_scripts",
