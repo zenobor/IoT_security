@@ -65,7 +65,7 @@ Per aprire l'app desktop:
 python app.py
 ```
 
-Nella finestra puoi scegliere rete, porte, modalita e opzioni. Premi **Start scan** per avviare il programma, guarda l'avanzamento nel log e i dispositivi nella tabella. Puoi anche premere **Cancel** durante una scansione. Quando usi l'`.exe`, i report vengono salvati in `C:\Users\TUO_UTENTE\IoTScannerReports`.
+Nella finestra puoi scegliere rete, porte, modalita e opzioni. Premi **Start scan** per avviare il programma, guarda l'avanzamento nel log, i dispositivi nella tabella **Devices** e il report completo nella tab **Report**. Puoi anche premere **Cancel** durante una scansione. Quando usi l'`.exe`, i report vengono salvati in `C:\Users\TUO_UTENTE\IoTScannerReports`.
 
 Mostra tutti i comandi disponibili:
 

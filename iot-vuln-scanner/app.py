@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QSpinBox,
+    QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -119,6 +121,9 @@ class ScannerWindow(QMainWindow):
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
+        self.tabs = QTabWidget()
+        devices_page = QWidget()
+        devices_layout = QVBoxLayout(devices_page)
         self.results_table = QTableWidget(0, 6)
         self.results_table.setHorizontalHeaderLabels(
             ["IP", "Hostname", "Type", "Vendor", "Model", "Risk"]
@@ -126,7 +131,18 @@ class ScannerWindow(QMainWindow):
         self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.results_table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.results_table, 1)
+        devices_layout.addWidget(self.results_table)
+        self.tabs.addTab(devices_page, "Devices")
+
+        report_page = QWidget()
+        report_layout = QVBoxLayout(report_page)
+        self.report_view = QTextBrowser()
+        self.report_view.setOpenExternalLinks(False)
+        self.report_view.setPlaceholderText("The report will appear here after a scan.")
+        report_layout.addWidget(self.report_view)
+        self.tabs.addTab(report_page, "Report")
+        layout.addWidget(self.tabs, 1)
+
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.setMaximumHeight(150)
@@ -138,6 +154,8 @@ class ScannerWindow(QMainWindow):
             return
         self.log_output.clear()
         self.results_table.setRowCount(0)
+        self.report_view.clear()
+        self.tabs.setCurrentIndex(0)
         self.cancel_requested = False
         self.open_button.setEnabled(False)
         self.open_csv_button.setEnabled(False)
@@ -191,6 +209,7 @@ class ScannerWindow(QMainWindow):
             return
         if exit_code == 0:
             self.load_results()
+            self.load_report()
             self.status_label.setText("Scan finished. Reports are ready.")
             self.open_button.setEnabled(True)
             self.open_csv_button.setEnabled(True)
@@ -230,6 +249,15 @@ class ScannerWindow(QMainWindow):
                     item.setForeground(QColor(colors.get(str(value), "#222222")))
                 self.results_table.setItem(row, column, item)
         self.results_table.resizeColumnsToContents()
+
+    def load_report(self) -> None:
+        try:
+            markdown = self.markdown_report.read_text(encoding="utf-8")
+        except OSError as exc:
+            self.report_view.setPlainText(f"Could not load report: {exc}")
+            return
+        self.report_view.setMarkdown(markdown)
+        self.tabs.setCurrentIndex(1)
 
     def process_error(self, _error: QProcess.ProcessError) -> None:
         self.scan_button.setEnabled(True)
