@@ -68,6 +68,20 @@ Avvia una scansione della propria rete autorizzata:
 python main.py --network 192.168.1.0/24 --timeout 2 --output scan_report.md
 ```
 
+La modalita predefinita `quick` controlla le porte piu comuni ed evita i test piu lenti:
+
+```powershell
+python main.py --mode quick --network 192.168.1.0/24 --output scan_report.md
+```
+
+Per una scansione piu completa, che esegue anche gli script di vulnerabilita Nmap:
+
+```powershell
+python main.py --mode full --network 192.168.1.0/24 --output scan_report.md
+```
+
+Aggiungi `--nvd` se vuoi interrogare anche il database NVD per le CVE. Questa opzione puo richiedere piu tempo e una connessione Internet.
+
 Per salvare anche i risultati in JSON:
 
 ```powershell
@@ -81,6 +95,8 @@ I parametri significano:
 - `--output`: nome del report Markdown da creare.
 - `--json-output`: file JSON opzionale per usare i risultati in altri programmi.
 - `--history`: file usato per ricordare i dispositivi della scansione precedente. Il valore predefinito e `scan_history.json`.
+- `--mode`: `quick` (predefinita) o `full`.
+- `--nvd`: abilita le richieste alla NVD API.
 
 Il programma trova i dispositivi, legge vendor e porte, controlla le vulnerabilita e salva il risultato in `scan_report.md`. Il report mostra anche quanti dispositivi hanno rischio alto, medio o basso, consigli pratici e quali dispositivi sono nuovi, rimossi o cambiati rispetto alla scansione precedente.
 

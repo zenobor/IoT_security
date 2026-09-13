@@ -3,10 +3,24 @@ vuln_check.py
 Verifica vulnerabilità note (CVE) per servizi/versioni rilevati.
 """
 
+import os
+
 import requests
 
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+
+def _create_scanner(nmap):
+    search_paths = [
+        path
+        for path in (
+            r"C:\Program Files\Nmap\nmap.exe",
+            r"C:\Program Files (x86)\Nmap\nmap.exe",
+        )
+        if os.path.exists(path)
+    ]
+    return nmap.PortScanner(nmap_search_path=tuple(search_paths))
 
 
 def check_nvd(vendor: str, product: str, version: str) -> list[dict]:
@@ -62,12 +76,15 @@ def run_nmap_vuln_scripts(ip: str) -> list[str]:
         ) from exc
 
     try:
-        scanner = nmap.PortScanner()
+        scanner = _create_scanner(nmap)
     except nmap.nmap.PortScannerError as exc:
         raise RuntimeError(
             "Nmap program was not found. Install Nmap and reopen PowerShell."
         ) from exc
-    scanner.scan(hosts=ip, arguments="-sV --script vuln")
+    scanner.scan(
+        hosts=ip,
+        arguments="-T4 --top-ports 100 --version-light --script vuln --host-timeout 30s",
+    )
     if ip not in scanner.all_hosts():
         return []
 

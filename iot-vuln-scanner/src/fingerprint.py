@@ -3,6 +3,20 @@ fingerprint.py
 Identifica vendor, servizi e versioni per ogni dispositivo trovato.
 """
 
+import os
+
+
+def _create_scanner(nmap):
+    search_paths = [
+        path
+        for path in (
+            r"C:\Program Files\Nmap\nmap.exe",
+            r"C:\Program Files (x86)\Nmap\nmap.exe",
+        )
+        if os.path.exists(path)
+    ]
+    return nmap.PortScanner(nmap_search_path=tuple(search_paths))
+
 
 def get_vendor(mac_address: str) -> str:
     """Ritorna il nome del produttore a partire dal MAC address (lookup OUI)."""
@@ -56,7 +70,10 @@ def identify_device(vendor: str, ports: list[dict]) -> dict[str, str]:
     }
 
 
-def scan_ports(ip: str, arguments: str = "-sV") -> list[dict]:
+def scan_ports(
+    ip: str,
+    arguments: str = "-T4 --top-ports 100 --version-light --host-timeout 15s",
+) -> list[dict]:
     """Ritorna porte aperte e servizi/versioni rilevati su un IP."""
     try:
         import nmap
@@ -66,7 +83,7 @@ def scan_ports(ip: str, arguments: str = "-sV") -> list[dict]:
         ) from exc
 
     try:
-        scanner = nmap.PortScanner()
+        scanner = _create_scanner(nmap)
     except nmap.nmap.PortScannerError as exc:
         raise RuntimeError(
             "Nmap program was not found. Install Nmap and reopen PowerShell."

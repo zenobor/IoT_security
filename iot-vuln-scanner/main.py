@@ -4,6 +4,8 @@ Entry point del tool.
 
 import argparse
 
+import requests
+
 from src import discovery
 from src import fingerprint, history, report, rules, scoring, vuln_check
 
@@ -15,6 +17,17 @@ def main():
     parser.add_argument("--output", default="scan_report.md")
     parser.add_argument("--json-output", help="Also save the results as JSON")
     parser.add_argument("--history", default="scan_history.json")
+    parser.add_argument(
+        "--mode",
+        choices=("quick", "full"),
+        default="quick",
+        help="quick is faster; full also runs vulnerability scripts",
+    )
+    parser.add_argument(
+        "--nvd",
+        action="store_true",
+        help="Query the NVD API for possible CVEs",
+    )
     args = parser.parse_args()
 
     ip_range = args.network
@@ -24,8 +37,10 @@ def main():
     print(f"Trovati {len(devices)} dispositivi.")
 
     results = []
-    for device in devices:
+    nvd_cache = {}
+    for number, device in enumerate(devices, start=1):
         ip = device["ip"]
+        print(f"Analysing device {number}/{len(devices)}: {ip}")
         vendor = fingerprint.get_vendor(device["mac"])
         scan_errors = []
         try:
@@ -42,21 +57,28 @@ def main():
         }
 
         vulnerabilities = []
-        for port in ports:
-            if port.get("product") or port.get("version"):
-                vulnerabilities.extend(
-                    vuln_check.check_nvd(
-                        vendor,
-                        port.get("product", "") or port.get("service", ""),
-                        port.get("version", ""),
-                    )
-                )
+        if args.nvd:
+            for port in ports:
+                product = port.get("product", "") or port.get("service", "")
+                version = port.get("version", "")
+                cache_key = (vendor, product, version)
+                if product or version:
+                    if cache_key not in nvd_cache:
+                        try:
+                            nvd_cache[cache_key] = vuln_check.check_nvd(
+                                vendor, product, version
+                            )
+                        except requests.RequestException as exc:
+                            scan_errors.append(f"NVD request failed: {exc}")
+                            nvd_cache[cache_key] = []
+                    vulnerabilities.extend(nvd_cache[cache_key])
 
-        try:
-            nmap_findings = vuln_check.run_nmap_vuln_scripts(ip)
-        except RuntimeError as exc:
-            nmap_findings = []
-            scan_errors.append(str(exc))
+        nmap_findings = []
+        if args.mode == "full":
+            try:
+                nmap_findings = vuln_check.run_nmap_vuln_scripts(ip)
+            except RuntimeError as exc:
+                scan_errors.append(str(exc))
         iot_flags["nmap_findings"] = nmap_findings
         result = {
             **device,
