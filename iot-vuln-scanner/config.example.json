@@ -1,0 +1,11 @@
+{
+  "network": "192.168.1.0/24",
+  "timeout": 2,
+  "ports": "22,23,80,443,554,8080",
+  "mode": "quick",
+  "offline": true,
+  "output": "scan_report.md",
+  "html_output": "scan_report.html",
+  "csv_output": "scan_results.csv",
+  "json_output": "scan_results.json"
+}

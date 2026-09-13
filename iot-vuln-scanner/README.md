@@ -14,7 +14,9 @@ Questo strumento va usato **esclusivamente sulla propria rete o su reti per cui 
 - [x] Regole specifiche IoT (Telnet aperto, credenziali default, UPnP esposto)
 - [x] Report finale con livello di rischio per dispositivo
 - [x] Riepilogo del rischio e consigli pratici
-- [x] Export JSON
+- [x] Export JSON, HTML e CSV
+- [x] Hostname, porte personalizzate e modalita offline
+- [x] Configurazione da file e test automatici GitHub
 
 ## Copiare il progetto in VS Code
 
@@ -88,14 +90,50 @@ Per salvare anche i risultati in JSON:
 python main.py --network 192.168.1.0/24 --timeout 2 --output scan_report.md --json-output scan_results.json
 ```
 
+Per creare anche HTML e CSV:
+
+```powershell
+python main.py --mode quick --network 192.168.1.0/24 --output scan_report.md --html-output scan_report.html --csv-output scan_results.csv --json-output scan_results.json
+```
+
+Per controllare solo alcune porte:
+
+```powershell
+python main.py --ports 22,23,80,443,554,8080 --network 192.168.1.0/24
+```
+
+Per usare il file di configurazione di esempio:
+
+```powershell
+python main.py --config config.example.json
+```
+
+Per una scansione senza richieste Internet:
+
+```powershell
+python main.py --offline --network 192.168.1.0/24
+```
+
+I file generati sono:
+
+- `scan_report.md`: report breve in Markdown.
+- `scan_report.html`: report leggibile nel browser.
+- `scan_results.csv`: tabella per Excel o altri strumenti.
+- `scan_results.json`: risultati completi per altri programmi.
+
 I parametri significano:
 
 - `--network`: rete da analizzare in formato CIDR.
 - `--timeout`: secondi di attesa per le risposte ARP.
 - `--output`: nome del report Markdown da creare.
 - `--json-output`: file JSON opzionale per usare i risultati in altri programmi.
+- `--html-output`: report HTML opzionale da aprire nel browser.
+- `--csv-output`: tabella CSV opzionale da aprire in Excel.
+- `--ports`: porte o intervalli, per esempio `22,80,443,8000-8100`.
 - `--mode`: `quick` (predefinita) o `full`.
 - `--nvd`: abilita le richieste alla NVD API.
+- `--offline`: disabilita le richieste a NVD e ai servizi Internet.
+- `--config`: legge i valori predefiniti da un file JSON.
 
 Il programma trova i dispositivi, legge vendor e porte, controlla le vulnerabilita e salva il risultato in `scan_report.md`. Il report mostra anche quanti dispositivi hanno rischio alto, medio o basso e consigli pratici.
 
@@ -124,6 +162,8 @@ git push origin main
 - `git commit` salva una versione nella cronologia locale.
 - `git push` pubblica i commit su GitHub.
 
+GitHub Actions esegue automaticamente i test quando viene fatto un push o aperta una pull request.
+
 ## Struttura del progetto
 
 ```
@@ -133,7 +173,7 @@ src/
 ├── vuln_check.py    # controllo CVE note
 ├── rules.py         # regole IoT-specifiche
 ├── scoring.py       # calcolo livello di rischio
-└── report.py        # generazione report Markdown e JSON
+└── report.py        # generazione report Markdown, HTML, CSV e JSON
 ```
 
 ## Stato del progetto

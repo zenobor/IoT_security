@@ -50,6 +50,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 scan_report.md
+scan_report.html
+scan_results.csv
 scan_results.json
 cover/
 
