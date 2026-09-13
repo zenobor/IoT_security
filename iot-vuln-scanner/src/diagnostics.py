@@ -42,4 +42,55 @@ def check_system() -> list[dict[str, str]]:
     except (OSError, subprocess.SubprocessError) as exc:
         status, details = "UNKNOWN", str(exc)
     checks.append({"name": "Npcap", "status": status, "details": details})
+    checks.append(_check_wifi_security())
+    checks.append(
+        {
+            "name": "VLAN / guest isolation",
+            "status": "MANUAL",
+            "details": "Check guest and IoT isolation in the router or managed switch.",
+        }
+    )
     return checks
+
+
+def _check_wifi_security() -> dict[str, str]:
+    """Inspect the current Windows Wi-Fi connection, not the whole AP policy."""
+    try:
+        result = subprocess.run(
+            ["netsh", "wlan", "show", "interfaces"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "name": "Wi-Fi security",
+            "status": "MANUAL",
+            "details": f"Could not inspect the Wi-Fi connection: {exc}",
+        }
+
+    text = result.stdout.lower()
+    if not text.strip():
+        return {
+            "name": "Wi-Fi security",
+            "status": "MANUAL",
+            "details": "No active Windows Wi-Fi interface was found.",
+        }
+    if any(value in text for value in ("wep", "open system", "tkip")):
+        return {
+            "name": "Wi-Fi security",
+            "status": "WARNING",
+            "details": "The current Wi-Fi connection may use weak or open security.",
+        }
+    if "wpa3" in text or "wpa2" in text:
+        return {
+            "name": "Wi-Fi security",
+            "status": "OK",
+            "details": "The current connection reports WPA2/WPA3.",
+        }
+    return {
+        "name": "Wi-Fi security",
+        "status": "MANUAL",
+        "details": "Wi-Fi authentication could not be classified automatically.",
+    }

@@ -86,6 +86,7 @@ def generate_report(devices: list[dict], output_path: str) -> None:
         "- IoT rules: checks Telnet, UPnP and known default credentials.",
         "- NVD/Nmap scripts: looks for possible known vulnerabilities.",
         "- Full mode: checks web panels, TLS and security headers without logging in.",
+        "- Password, Wi-Fi and VLAN checks are reported as manual when this host cannot verify them.",
         "",
         "## Devices",
         "",
@@ -125,11 +126,11 @@ def generate_report(devices: list[dict], output_path: str) -> None:
             check.get("status") == "warning" for check in deep_findings
         )
         if risk in {"HIGH", "MEDIUM"} or vulnerabilities or has_deep_warning or device.get("scan_errors"):
-            attention_devices.append((device, vulnerabilities))
+            attention_devices.append((device, vulnerabilities, deep_findings))
 
     if attention_devices:
         lines.extend(["", "## Attention needed", ""])
-        for device, vulnerabilities in attention_devices:
+        for device, vulnerabilities, deep_findings in attention_devices:
             lines.append(f"### {_clean(device.get('ip', 'unknown'))}")
             lines.append(
                 "- " + _clean(" ".join(_recommendations(device)))
@@ -147,6 +148,12 @@ def generate_report(devices: list[dict], output_path: str) -> None:
                     f"{_clean(check.get('status', 'info'))}; "
                     f"{_clean(check.get('evidence', ''))}"
                 )
+                authentication = check.get("authentication")
+                if authentication:
+                    lines.append(
+                        f"  Authentication: {_clean(authentication.get('status', 'manual'))}; "
+                        f"{_clean(authentication.get('evidence', ''))}"
+                    )
             lines.append("")
 
     path = Path(output_path)

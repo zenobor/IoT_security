@@ -7,6 +7,8 @@ Desktop and Python tool for finding IoT devices on an authorized local network a
 - Finds devices with ARP and identifies vendor, hostname and device type.
 - Checks ports and services with Nmap.
 - Checks Telnet, FTP, SSH, UPnP, HTTP/TLS and default credentials.
+- Reports web authentication, cleartext services and firmware banners.
+- Reports manual checks for weak passwords, Wi-Fi security and VLAN/guest isolation.
 - Calculates a network score from `0` to `100`.
 - Creates Markdown, HTML, CSV and JSON reports.
 - Includes a PySide6 desktop app and Nmap/Npcap diagnostics.
@@ -62,6 +64,8 @@ Or run the Windows build:
 ```
 
 The app includes Devices, Network map, Report, Log and Diagnostics tabs.
+
+The scanner does not guess passwords or perform brute force. Password strength, Wi-Fi encryption and VLAN isolation must be checked in the device or router settings. Full mode reports these limits explicitly instead of claiming they are safe.
 
 ## Tests
 

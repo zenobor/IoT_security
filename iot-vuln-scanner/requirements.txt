@@ -2,4 +2,5 @@ scapy
 mac-vendor-lookup
 python-nmap
 requests
+urllib3
 PySide6

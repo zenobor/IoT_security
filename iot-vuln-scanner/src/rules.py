@@ -47,7 +47,7 @@ def check_default_credentials(vendor: str, ip: str) -> bool:
         for name in credentials
         if name != "generic"
     )
-    return has_vendor_credentials or normalized_vendor in {"unknown", "generic"}
+    return has_vendor_credentials
 
 
 def check_upnp_exposed(open_ports: list[int]) -> bool:

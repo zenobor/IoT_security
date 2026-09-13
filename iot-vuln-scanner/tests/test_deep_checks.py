@@ -4,7 +4,11 @@ from src import deep_checks
 
 
 def test_http_check_reports_missing_security_headers(monkeypatch):
-    response = SimpleNamespace(status_code=200, headers={"Content-Type": "text/html"})
+    response = SimpleNamespace(
+        status_code=200,
+        headers={"Content-Type": "text/html"},
+        text="<html><body>public panel</body></html>",
+    )
     session = SimpleNamespace(
         trust_env=False,
         get=lambda *args, **kwargs: response,
@@ -15,6 +19,7 @@ def test_http_check_reports_missing_security_headers(monkeypatch):
 
     assert checks[0]["status"] == "warning"
     assert "security headers" in checks[0]["recommendation"]
+    assert checks[0]["authentication"]["status"] == "warning"
 
 
 def test_deep_checks_do_not_probe_without_web_ports():
@@ -22,3 +27,16 @@ def test_deep_checks_do_not_probe_without_web_ports():
 
     assert checks[0]["status"] == "info"
     assert "No HTTP" in checks[0]["evidence"]
+
+
+def test_deep_checks_report_manual_security_limits():
+    checks = deep_checks.run_deep_checks("192.168.1.10", [21, 80], [
+        {"port": 80, "product": "Test panel", "version": "1.0"}
+    ])
+    names = {check["name"] for check in checks}
+
+    assert "Weak password audit" in names
+    assert "Wi-Fi security" in names
+    assert "VLAN / guest isolation" in names
+    firmware = next(check for check in checks if check["name"] == "Firmware / service version")
+    assert firmware["status"] == "manual"

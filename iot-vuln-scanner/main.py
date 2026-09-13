@@ -128,7 +128,7 @@ def main():
             except RuntimeError as exc:
                 scan_errors.append(str(exc))
             print("  [3/3] Checking web panels and TLS...", flush=True)
-            deep_findings = deep_checks.run_deep_checks(ip, open_ports)
+            deep_findings = deep_checks.run_deep_checks(ip, open_ports, ports)
         iot_flags["nmap_findings"] = nmap_findings
         iot_flags["deep_checks"] = deep_findings
         result = {

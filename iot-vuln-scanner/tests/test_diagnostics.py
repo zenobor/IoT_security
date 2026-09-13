@@ -11,5 +11,5 @@ def test_diagnostics_returns_nmap_and_npcap_entries(monkeypatch):
 
     checks = diagnostics.check_system()
 
-    assert [check["name"] for check in checks] == ["Nmap", "Npcap"]
-    assert all(check["status"] == "OK" for check in checks)
+    assert [check["name"] for check in checks[:2]] == ["Nmap", "Npcap"]
+    assert all(check["status"] == "OK" for check in checks[:2])
