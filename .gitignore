@@ -51,7 +51,6 @@ coverage.xml
 .pytest_cache/
 scan_report.md
 scan_results.json
-scan_history.json
 cover/
 
 # Translations
