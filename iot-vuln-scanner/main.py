@@ -5,7 +5,7 @@ Entry point del tool.
 import argparse
 
 from src import discovery
-from src import fingerprint, report, rules, scoring, vuln_check
+from src import fingerprint, history, report, rules, scoring, vuln_check
 
 
 def main():
@@ -13,6 +13,8 @@ def main():
     parser.add_argument("--network", default="192.168.1.0/24")
     parser.add_argument("--timeout", type=int, default=2)
     parser.add_argument("--output", default="scan_report.md")
+    parser.add_argument("--json-output", help="Also save the results as JSON")
+    parser.add_argument("--history", default="scan_history.json")
     args = parser.parse_args()
 
     ip_range = args.network
@@ -70,7 +72,19 @@ def main():
         results.append(result)
 
     report.generate_report(results, args.output)
+    history_changes = history.compare_with_history(results, args.history)
+    history.save_history(results, args.history)
+    if args.json_output:
+        report.generate_json_report(results, args.json_output, history_changes)
     print(f"Report salvato in {args.output}")
+    print(
+        "Nuovi dispositivi: "
+        f"{len(history_changes['new_devices'])}; "
+        "rimossi: "
+        f"{len(history_changes['removed_devices'])}; "
+        "cambiati: "
+        f"{len(history_changes['changed_devices'])}"
+    )
 
 
 if __name__ == "__main__":
