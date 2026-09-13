@@ -95,6 +95,7 @@ def run_deep_checks(
             }
         )
     checks.append(_transport_check(open_ports))
+    checks.append(_exposed_service_check(open_ports))
     checks.append(_firmware_check(services or []))
     checks.append(
         {
@@ -121,6 +122,33 @@ def run_deep_checks(
         }
     )
     return checks
+
+
+def _exposed_service_check(open_ports: list[int]) -> dict:
+    services = {
+        3389: "RDP",
+        5900: "VNC",
+        3306: "MySQL",
+        5432: "PostgreSQL",
+        6379: "Redis",
+        9200: "Elasticsearch",
+        1883: "MQTT",
+        4840: "OPC UA",
+    }
+    found = [name for port, name in services.items() if port in open_ports]
+    if found:
+        return {
+            "name": "Sensitive service exposure",
+            "status": "warning",
+            "evidence": f"Potentially sensitive service(s) exposed: {', '.join(found)}",
+            "recommendation": "Restrict these services to trusted hosts or place them on an isolated IoT VLAN.",
+        }
+    return {
+        "name": "Sensitive service exposure",
+        "status": "pass",
+        "evidence": "No common database, broker, remote-desktop or industrial service was detected.",
+        "recommendation": "No action needed from this check.",
+    }
 
 
 def _transport_check(open_ports: list[int]) -> dict:

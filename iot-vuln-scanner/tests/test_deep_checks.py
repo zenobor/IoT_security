@@ -40,3 +40,13 @@ def test_deep_checks_report_manual_security_limits():
     assert "VLAN / guest isolation" in names
     firmware = next(check for check in checks if check["name"] == "Firmware / service version")
     assert firmware["status"] == "manual"
+
+
+def test_deep_checks_find_sensitive_services():
+    checks = deep_checks.run_deep_checks("192.168.1.10", [1883])
+
+    service_check = next(
+        check for check in checks if check["name"] == "Sensitive service exposure"
+    )
+    assert service_check["status"] == "warning"
+    assert "MQTT" in service_check["evidence"]
