@@ -65,23 +65,26 @@ def generate_json_report(devices: list[dict], output_path: str, history: dict | 
 
 
 def generate_report(devices: list[dict], output_path: str) -> None:
-    """Scrive un report Markdown riassuntivo dei dispositivi e delle vulnerabilità trovate."""
+    """Write a short, structured Markdown report."""
     lines = [
         "# IoT Scan Report",
         "",
-        f"Found **{len(devices)}** devices on the network.",
+        "## Scan summary",
+        "",
+        f"- Devices found: **{len(devices)}**",
         _risk_summary(devices),
         "",
-        "The scan finds devices with ARP, checks their network services with Nmap, "
-        "and looks for common IoT security problems.",
+        "The scan uses ARP to find devices, Nmap to inspect services, and simple checks "
+        "for common IoT security problems.",
         "",
     ]
 
-    for device in devices:
+    for number, device in enumerate(devices, start=1):
         identity = device.get("identity", {})
         vendor = identity.get("vendor") or device.get("vendor", "Unknown vendor")
         model = identity.get("model") or device.get("model", "Unknown model")
         device_type = identity.get("type") or device.get("type", "Unknown device")
+        risk = device.get("risk", "low").upper()
         open_ports = [
             f"{port.get('port')} ({port.get('service', 'unknown')})"
             for port in device.get("ports", [])
@@ -89,20 +92,37 @@ def generate_report(devices: list[dict], output_path: str) -> None:
         ]
         lines.extend(
             [
-                f"## {_clean(device.get('ip', 'unknown'))} - {_clean(device_type)}",
-                f"**Vendor:** {_clean(vendor)}  ",
-                f"**Model:** {_clean(model)}  ",
-                f"**Risk:** {_clean(device.get('risk', 'low').upper())}  ",
-                f"**Open ports:** {_clean(', '.join(open_ports) or 'none detected')}",
+                f"---\n\n## Device {number}: {_clean(device.get('ip', 'unknown'))}",
                 "",
-                f"**Checks:** {_clean('; '.join(_test_summary(device)))}",
+                "### Identity",
                 "",
-                "**Recommendation:** " + _clean(" ".join(_recommendations(device))),
+                "| Field | Result |",
+                "| --- | --- |",
+                f"| Type | {_clean(device_type)} |",
+                f"| Vendor | {_clean(vendor)} |",
+                f"| Model | {_clean(model)} |",
+                f"| MAC address | {_clean(device.get('mac', 'unknown'))} |",
+                "",
+                "### Risk",
+                "",
+                f"**{_clean(risk)}**",
+                "",
+                "### Open ports",
+                "",
+                _clean(", ".join(open_ports) or "None detected"),
+                "",
+                "### Security checks",
+                "",
+                *[f"- {check}" for check in _test_summary(device)],
+                "",
+                "### What to do",
+                "",
+                *[f"- {_clean(recommendation)}" for recommendation in _recommendations(device)],
             ]
         )
         vulnerabilities = device.get("vulnerabilities", [])
         if vulnerabilities:
-            lines.extend(["", "**Possible vulnerabilities:**"])
+            lines.extend(["", "### Possible vulnerabilities", ""])
             for vulnerability in vulnerabilities:
                 lines.append(
                     f"- {vulnerability.get('id', 'CVE-unknown')}: "
