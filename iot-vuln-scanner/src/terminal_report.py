@@ -65,16 +65,85 @@ def score_style(score: int) -> str:
 
 # ---------- header / progress ----------
 
+# Big logo, made with figlet (font "ANSI Shadow"). Needs a Unicode terminal and 85+ columns.
+BIG_BANNER = """
+██╗ ██████╗ ████████╗  ███████╗███████╗ ██████╗██╗   ██╗██████╗ ██╗████████╗██╗   ██╗
+██║██╔═══██╗╚══██╔══╝  ██╔════╝██╔════╝██╔════╝██║   ██║██╔══██╗██║╚══██╔══╝╚██╗ ██╔╝
+██║██║   ██║   ██║     ███████╗█████╗  ██║     ██║   ██║██████╔╝██║   ██║    ╚████╔╝
+██║██║   ██║   ██║     ╚════██║██╔══╝  ██║     ██║   ██║██╔══██╗██║   ██║     ╚██╔╝
+██║╚██████╔╝   ██║     ███████║███████╗╚██████╗╚██████╔╝██║  ██║██║   ██║      ██║
+╚═╝ ╚═════╝    ╚═╝     ╚══════╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝      ╚═╝
+                       ███████╗ ██████╗ █████╗ ███╗   ██╗███╗   ██╗███████╗██████╗
+                       ██╔════╝██╔════╝██╔══██╗████╗  ██║████╗  ██║██╔════╝██╔══██╗
+                       ███████╗██║     ███████║██╔██╗ ██║██╔██╗ ██║█████╗  ██████╔╝
+                       ╚════██║██║     ██╔══██║██║╚██╗██║██║╚██╗██║██╔══╝  ██╔══██╗
+                       ███████║╚██████╗██║  ██║██║ ╚████║██║ ╚████║███████╗██║  ██║
+                       ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝
+"""
+
+# Small logo (font "slant"), only plain ASCII: used on small or old terminals.
+SMALL_BANNER = r"""
+    ____    ______   _____                      _ __
+   /  _/___/_  __/  / ___/___  _______  _______(_) /___  __
+   / // __ \/ /     \__ \/ _ \/ ___/ / / / ___/ / __/ / / /
+ _/ // /_/ / /     ___/ /  __/ /__/ /_/ / /  / / /_/ /_/ /
+/___/\____/_/     /____/\___/\___/\__,_/_/  /_/\__/\__, /
+                 _____                            /____/
+                / ___/_________ _____  ____  ___  _____
+                \__ \/ ___/ __ `/ __ \/ __ \/ _ \/ ___/
+               ___/ / /__/ /_/ / / / / / / /  __/ /
+              /____/\___/\__,_/_/ /_/_/ /_/\___/_/
+"""
+
+# The logo color goes from left (cyan) to right (green)
+GRADIENT_START = (0, 200, 255)
+GRADIENT_END = (0, 255, 140)
+
+
+def _gradient_line(line: str, width: int) -> Text:
+    """Colors one line of the logo. The full blocks are bright, the "shadow" lines darker (3D effect)."""
+    text = Text()
+    for column, char in enumerate(line):
+        ratio = column / max(width - 1, 1)
+        red, green, blue = (round(start + (end - start) * ratio) for start, end in zip(GRADIENT_START, GRADIENT_END))
+        if char == " ":
+            text.append(char)
+        elif char == "█":  # the full block
+            text.append(char, style=f"bold #{red:02x}{green:02x}{blue:02x}")
+        else:
+            text.append(char, style=f"#{red // 3:02x}{green // 3:02x}{blue // 3:02x}")
+    return text
+
+
+def _supports_unicode() -> bool:
+    return (console.encoding or "").lower().replace("-", "").startswith("utf")
+
+
 def print_banner(version: str) -> None:
+    big_lines = BIG_BANNER.strip("\n").splitlines()
+    big_width = max(len(line) for line in big_lines)
+    console.print()
+    if console.width > big_width and _supports_unicode():
+        for line in big_lines:
+            console.print(_gradient_line(line, big_width))
+        separator = "─"
+    elif console.width >= 60:
+        small_lines = SMALL_BANNER.strip("\n").splitlines()
+        small_width = max(len(line) for line in small_lines)
+        for line in small_lines:
+            console.print(_gradient_line(line, small_width))
+        separator = "-"
+    else:
+        console.print("[bold bright_cyan]IoT Security Scanner[/]")
+        separator = "-"
+
     console.print(
-        Panel.fit(
-            f"[bold cyan]IoT Vulnerability Scanner[/] [dim]v{version}[/]\n"
-            "Finds the devices on your network and checks how exposed they are.\n"
-            "[dim]Only scan networks you own or have permission to test.[/]",
-            border_style="cyan",
-            padding=(0, 2),
-        )
+        f"[dim]{separator * 3}[/] [bold]v{version}[/] [dim]{separator * 3}[/] "
+        "ARP [green]+[/] SSDP [green]+[/] Nmap [green]+[/] NVD "
+        f"[dim]{separator * 3}[/] [dim]by zeno[/] [dim]{separator * 3}[/]"
     )
+    console.print("[yellow][!][/] [dim]Only scan networks you own or have permission to test.[/]")
+    console.print()
 
 
 def print_scan_header(network: str, mode: str, nvd: bool, workers: int, admin: bool) -> None:
