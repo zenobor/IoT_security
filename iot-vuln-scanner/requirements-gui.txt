@@ -1,0 +1,3 @@
+# Only needed for the optional desktop app (python app.py)
+-r requirements.txt
+PySide6>=6.6

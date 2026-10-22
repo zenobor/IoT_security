@@ -1,13 +1,23 @@
-# Ambiente virtuale
+# Virtual environment
+.venv/
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
-# File di configurazione locali (es. API key)
+# Local settings (e.g. NVD API key)
 .env
+config.json
 
-# Report generati
+# Scan results contain details about your home network: never commit them
 reports/
+cache/
+scan_report.*
+scan_results.*
+
+# Desktop app build
+build/
+dist/
 
 # IDE
 .vscode/

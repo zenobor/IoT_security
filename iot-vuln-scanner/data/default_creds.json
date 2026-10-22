@@ -1,5 +1,19 @@
 {
+  "_comment": "Factory credentials published in vendor manuals. The scanner never logs in with them: it only uses the vendor names to remind you to check the password.",
   "hikvision": [{"username": "admin", "password": "12345"}],
   "dahua": [{"username": "admin", "password": "admin"}],
+  "amcrest": [{"username": "admin", "password": "admin"}],
+  "foscam": [{"username": "admin", "password": ""}],
+  "reolink": [{"username": "admin", "password": ""}],
+  "axis": [{"username": "root", "password": "pass"}],
+  "tp-link": [{"username": "admin", "password": "admin"}],
+  "d-link": [{"username": "admin", "password": ""}],
+  "netgear": [{"username": "admin", "password": "password"}],
+  "tenda": [{"username": "admin", "password": "admin"}],
+  "zyxel": [{"username": "admin", "password": "1234"}],
+  "mikrotik": [{"username": "admin", "password": ""}],
+  "ubiquiti": [{"username": "ubnt", "password": "ubnt"}],
+  "zte": [{"username": "admin", "password": "admin"}],
+  "raspberry pi": [{"username": "pi", "password": "raspberry"}],
   "generic": [{"username": "admin", "password": "admin"}, {"username": "root", "password": "root"}]
 }

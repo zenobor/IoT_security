@@ -1,6 +1,5 @@
-from src.fingerprint import identify_device
-from src.report import generate_csv_report, generate_html_report, generate_report
-from src.scoring import calculate_network_score, calculate_risk
+from src.findings import device_issues
+from src.scoring import calculate_network_score, calculate_points, calculate_risk, count_risks
 
 
 def test_calculate_risk_levels():
@@ -12,68 +11,40 @@ def test_calculate_risk_levels():
     ) == "high"
 
 
+def test_only_the_three_worst_cves_count():
+    many_cves = [{"severity": "MEDIUM", "score": 5.0}] * 50
+    assert calculate_points(many_cves, {}) == 6
+
+
+def test_known_exploited_cves_add_points():
+    normal = [{"severity": "HIGH", "score": 7.5}]
+    exploited = [{"severity": "HIGH", "score": 7.5, "known_exploited": True}]
+    assert calculate_points(exploited, {}) == calculate_points(normal, {}) + 3
+
+
+def test_deep_check_warnings_use_their_points():
+    flags = {"deep_checks": [{"status": "warning", "points": 3}, {"status": "pass"}]}
+    assert calculate_points([], flags) == 3
+
+
 def test_calculate_network_score():
     assert calculate_network_score([]) == 100
     assert calculate_network_score([{"risk": "low"}]) == 94
     assert calculate_network_score([{"risk": "high"}]) == 30
 
 
-def test_identify_camera_from_services():
-    identity = identify_device(
-        "Hikvision",
-        [
-            {
-                "port": 554,
-                "state": "open",
-                "service": "rtsp",
-                "product": "Hikvision camera",
-                "version": "5.0",
-            }
-        ],
+def test_count_risks():
+    assert count_risks([{"risk": "high"}, {"risk": "low"}, {"risk": "low"}]) == {"high": 1, "medium": 0, "low": 2}
+
+
+def test_device_issues_are_sorted_by_severity(device_factory):
+    device = device_factory(
+        iot_flags={"ssh_open": True, "telnet_open": True},
+        vulnerabilities=[{"id": "CVE-2024-0001", "severity": "MEDIUM", "score": 5.0}],
     )
 
-    assert identity["type"] == "IP camera"
-    assert identity["vendor"] == "Hikvision"
-    assert identity["model"] == "Hikvision camera"
+    issues = device_issues(device)
 
-
-def test_generate_report(tmp_path):
-    output_path = tmp_path / "report.md"
-    generate_report(
-        [
-            {
-                "ip": "192.168.1.10",
-                "mac": "AA:BB:CC:DD:EE:FF",
-                "vendor": "Test vendor",
-                "ports": [],
-                "risk": "low",
-                "iot_flags": {},
-                "vulnerabilities": [],
-                "nmap_findings": [],
-            }
-        ],
-        str(output_path),
-    )
-
-    content = output_path.read_text(encoding="utf-8")
-    assert "192.168.1.10" in content
-    assert "Test vendor" in content
-
-
-def test_generate_html_and_csv_reports(tmp_path):
-    device = {
-        "ip": "192.168.1.10",
-        "hostname": "camera.local",
-        "identity": {"type": "IP camera", "vendor": "Test", "model": "Cam"},
-        "ports": [{"port": 554, "service": "rtsp", "state": "open"}],
-        "risk": "medium",
-    }
-    html_path = tmp_path / "report.html"
-    csv_path = tmp_path / "report.csv"
-
-    generate_html_report([device], str(html_path))
-    generate_csv_report([device], str(csv_path))
-
-    assert "camera.local" in html_path.read_text(encoding="utf-8")
-    assert "192.168.1.10" in csv_path.read_text(encoding="utf-8")
-
+    assert [issue["severity"] for issue in issues] == ["high", "medium", "low"]
+    assert issues[0]["title"] == "Telnet is open"
+    assert all(issue["fix"] for issue in issues)

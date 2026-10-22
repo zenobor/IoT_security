@@ -243,6 +243,7 @@ class ScannerWindow(QMainWindow):
             str(self.csv_report),
             "--json-output",
             str(self.json_report),
+            "--yes",
         ]
         if self.ports_input.text().strip():
             scan_arguments.extend(["--ports", self.ports_input.text().strip()])
@@ -440,6 +441,6 @@ if __name__ == "__main__":
         sys.argv.remove("--scan-cli")
         from main import main as run_cli
 
-        run_cli()
+        sys.exit(run_cli())
     else:
         main()

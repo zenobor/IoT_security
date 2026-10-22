@@ -1,6 +1,6 @@
-scapy
-mac-vendor-lookup
-python-nmap
-requests
-urllib3
-PySide6
+scapy==2.8.0
+python-nmap==0.7.1
+mac-vendor-lookup==0.1.15
+requests==2.34.2
+urllib3==2.8.0
+rich==15.0.0
