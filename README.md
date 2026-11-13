@@ -50,15 +50,14 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Open the terminal **as Administrator** (on Linux use `sudo`), then check that everything is ready:
-
-```powershell
-python main.py doctor
-```
-
 ## Usage
 
+**Windows, the easy way:** double-click `iot-vuln-scanner\start.bat`. It asks for administrator rights, installs the packages the first time and opens the menu.
+
+From a terminal (open it **as Administrator**, on Linux use `sudo`):
+
 ```powershell
+python main.py doctor              # check that Nmap, Npcap and admin rights are OK
 python main.py                     # interactive menu
 python main.py scan                # quick scan (the network is found automatically)
 python main.py scan --mode full    # more ports + deep checks (slower)
@@ -66,6 +65,7 @@ python main.py scan --nvd          # also look up known CVEs online
 python main.py show --map          # show the last scan again, with a network map
 python main.py show --ip 192.168.1.20   # every issue of one device
 python main.py compare             # what changed since the previous scan
+python main.py demo                # example scan with made-up devices, for screenshots
 ```
 
 All the options: `python main.py scan --help`. Default options can also go in a JSON file, see [config.example.json](iot-vuln-scanner/config.example.json).
@@ -88,7 +88,8 @@ The network score (0-100) is based on the average risk of the devices. All the w
 
 ```
 iot-vuln-scanner/
-├── main.py              command line (scan, doctor, show, compare, menu)
+├── start.bat            double-click launcher for Windows
+├── main.py              command line (scan, doctor, show, compare, demo, menu)
 ├── app.py               optional desktop window (pip install -r requirements-gui.txt)
 ├── data/                vendor list for the default-password check
 ├── src/
@@ -100,6 +101,7 @@ iot-vuln-scanner/
 │   ├── scoring.py       risk points and network score
 │   ├── findings.py      issue + fix texts
 │   ├── report.py        Markdown / HTML / CSV / JSON
+│   ├── demo.py          made-up network for "main.py demo"
 │   └── terminal_report.py   everything printed in the terminal
 └── tests/               pytest, no real network needed
 ```

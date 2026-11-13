@@ -123,6 +123,7 @@ def test_menu_runs_the_chosen_actions(monkeypatch):
     called = []
     monkeypatch.setattr(main.discovery, "detect_local_network", lambda: "192.168.1.0/24")
     monkeypatch.setattr(main.ui, "ask_menu_choice", lambda: next(choices))
+    monkeypatch.setattr(main.ui, "wait_for_enter", lambda: None)
     monkeypatch.setattr(main, "run_doctor", lambda *args: called.append("doctor") or 0)
     # "show" without any saved scan must print an error, not close the menu
     monkeypatch.setattr(main, "LATEST_JSON", main.Path("does-not-exist.json"))
@@ -161,3 +162,14 @@ def test_compare_with_only_one_scan(monkeypatch, tmp_path, capsys):
 
     assert main.main(["compare"]) == 1
     assert "only one saved scan" in capsys.readouterr().out
+
+
+def test_demo_runs_without_network(monkeypatch, capsys):
+    monkeypatch.setattr(main.demo.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(main, "save_reports", lambda *args: pytest.fail("demo must not save reports"))
+
+    assert main.main(["demo"]) == 0
+    output = capsys.readouterr().out
+    assert "Demo mode" in output
+    assert "Apple device (AirPlay)" in output
+    assert "Telnet is open" in output

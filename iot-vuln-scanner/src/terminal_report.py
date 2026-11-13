@@ -160,13 +160,13 @@ SMALL_BANNER = r"""
               /____/\___/\__,_/_/ /_/_/ /_/\___/_/
 """
 
-# The logo color goes from left (cyan) to right (green)
-GRADIENT_START = (0, 200, 255)
-GRADIENT_END = (0, 255, 140)
+# Muted colors, so the logo doesn't shout: from slate blue (left) to soft steel blue (right)
+GRADIENT_START = (88, 110, 140)
+GRADIENT_END = (120, 150, 170)
 
 
 def _gradient_line(line: str, width: int) -> Text:
-    """Colors one line of the logo. The full blocks are bright, the "shadow" lines darker (3D effect)."""
+    """Colors one line of the logo. The full blocks are a little lighter than the "shadow" lines (3D effect)."""
     text = Text()
     for column, char in enumerate(line):
         ratio = column / max(width - 1, 1)
@@ -174,9 +174,9 @@ def _gradient_line(line: str, width: int) -> Text:
         if char == " ":
             text.append(char)
         elif char == "█":  # the full block
-            text.append(char, style=f"bold #{red:02x}{green:02x}{blue:02x}")
+            text.append(char, style=f"#{red:02x}{green:02x}{blue:02x}")
         else:
-            text.append(char, style=f"#{red // 3:02x}{green // 3:02x}{blue // 3:02x}")
+            text.append(char, style=f"#{red // 2:02x}{green // 2:02x}{blue // 2:02x}")
     return text
 
 
@@ -216,7 +216,9 @@ def print_header(version: str, command: str) -> None:
     )
 
 
-def print_scan_header(network: str, mode: str, nvd: bool, workers: int, admin: bool, custom_ports: bool = False) -> None:
+def print_scan_header(
+    network: str, mode: str, nvd: bool, workers: int, admin: bool, custom_ports: bool = False, title: str = "New scan"
+) -> None:
     table = Table.grid(padding=(0, 3))
     table.add_column(style="bright_black", no_wrap=True)
     table.add_column()
@@ -233,7 +235,7 @@ def print_scan_header(network: str, mode: str, nvd: bool, workers: int, admin: b
     table.add_row("Admin", "[green]yes[/]" if admin else "[yellow]no[/] [bright_black](results may be incomplete)[/]")
     console.print()
     console.print(
-        Panel(table, title="[bold]New scan[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(0, 2), expand=False)
+        Panel(table, title=f"[bold]{escape(title)}[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(0, 2), expand=False)
     )
 
 
@@ -519,8 +521,24 @@ MENU = [
     ("2", "Check setup", "Nmap, Npcap, admin rights"),
     ("3", "Show the last scan", "summary, issues and network map"),
     ("4", "Compare scans", "what changed since the previous scan"),
+    ("5", "Demo", "example with made-up devices, good for screenshots"),
     ("q", "Quit", ""),
 ]
+
+
+def print_readiness(nmap_found: bool, admin: bool, network: str) -> None:
+    """One short status line under the logo, so problems are visible before the first scan."""
+    if not nmap_found:
+        error("Nmap is not installed: get it from nmap.org, then reopen the terminal.")
+    elif not admin:
+        warn("Not running as administrator: some devices may be missed. Use start.bat (Windows) or sudo.")
+    else:
+        ok(f"Ready to scan [bold]{escape(network)}[/]")
+
+
+def wait_for_enter() -> None:
+    console.print()
+    Prompt.ask(" [bright_black]Press Enter to go back to the menu[/]", default="", show_default=False, console=console)
 
 
 def ask_menu_choice() -> str:
@@ -532,13 +550,17 @@ def ask_menu_choice() -> str:
         table.add_row(Text(f"[{key}]"), label, hint)  # Text(): "[q]" would be read as markup
     console.print()
     console.print(Panel(table, title="[bold]Menu[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(1, 2), expand=False))
-    return Prompt.ask(" Choose", choices=[key for key, *_ in MENU], default="1", console=console)
+    return Prompt.ask(
+        " Choose an option", choices=[key for key, *_ in MENU], default="1", show_choices=False, console=console
+    ).lower()
 
 
 def ask_scan_settings(default_network: str) -> dict:
+    console.print(" [bright_black]Press Enter to keep the value in brackets.[/]")
     network = Prompt.ask(" Network to scan", default=default_network, console=console)
+    console.print(" [bright_black]quick = IoT ports, fast   /   full = more ports + deep checks, slower[/]")
     mode = Prompt.ask(" Mode", choices=["quick", "full"], default="quick", console=console)
-    nvd = Confirm.ask(" Look up known CVEs online (NVD, slower)?", default=False, console=console)
+    nvd = Confirm.ask(" Also look up known CVEs online (NVD, slower)?", default=False, console=console)
     return {"network": network.strip(), "mode": mode, "nvd": nvd}
 
 

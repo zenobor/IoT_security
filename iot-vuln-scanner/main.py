@@ -6,6 +6,7 @@ IoT Vulnerability Scanner - command line entry point.
     python main.py doctor           check that Nmap / Npcap / admin rights are OK
     python main.py show [file]      show a saved scan again
     python main.py compare [a] [b]  compare two saved scans
+    python main.py demo             example scan with made-up devices (for screenshots)
 """
 
 import argparse
@@ -18,7 +19,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from src import compare, diagnostics, discovery, report, scanner, vuln_check
+from src import compare, demo, diagnostics, discovery, report, scanner, vuln_check
 from src import terminal_report as ui
 
 
@@ -97,6 +98,7 @@ def build_parser(config: dict | None = None) -> argparse.ArgumentParser:
     compare_parser.add_argument("old", nargs="?", default=str(PREVIOUS_JSON), help="older JSON (default: previous scan)")
     compare_parser.add_argument("new", nargs="?", default=str(LATEST_JSON), help="newer JSON (default: last scan)")
 
+    commands.add_parser("demo", help="example scan with made-up devices (for screenshots)")
     commands.add_parser("menu", help="interactive menu (same as running without arguments)")
     return parser
 
@@ -250,17 +252,9 @@ def run_scan(args: argparse.Namespace) -> int:
         ui.info("Run 'python main.py doctor' to check your setup.")
         return 1
     ui.ok(f"Found [bold]{len(devices)}[/] devices [bright_black]({len(ssdp)} answered UPnP)[/]")
-    ui.console.print()
-
-    with ui.create_progress() as progress:
-        task = progress.add_task(" Analysing", total=len(devices), current="")
-
-        def on_done(result: dict) -> None:
-            progress.console.print(ui.device_done_line(result))
-            progress.update(task, advance=1, current=result.get("ip", ""))
-
-        results = scanner.analyse_devices(devices, options, ssdp, on_done=on_done)
-
+    results = _analyse_with_progress(
+        devices, lambda on_done: scanner.analyse_devices(devices, options, ssdp, on_done=on_done)
+    )
     scan = scanner.build_scan(options, results, started_at)
     previous = _previous_scan(args, network)
     saved = save_reports(scan, args)
@@ -274,6 +268,38 @@ def run_scan(args: argparse.Namespace) -> int:
         if compare.has_changes(diff):
             ui.print_comparison(diff)
     ui.print_outputs(saved, scan["scan"]["duration_seconds"])
+    return 0
+
+
+def _analyse_with_progress(devices: list[dict], analyse) -> list[dict]:
+    """Shows a progress bar and one line per device while they are analysed."""
+    ui.console.print()
+    with ui.create_progress() as progress:
+        task = progress.add_task(" Analysing", total=len(devices), current="")
+
+        def on_done(result: dict) -> None:
+            progress.console.print(ui.device_done_line(result))
+            progress.update(task, advance=1, current=result.get("ip", ""))
+
+        return analyse(on_done)
+
+
+def run_demo(_args: argparse.Namespace | None = None) -> int:
+    """Same screens as a real scan, but with a made-up network (for screenshots)."""
+    options = demo.options()
+    ui.print_scan_header(options.network, options.mode, False, options.workers, True, title="Demo scan")
+    ui.console.print()
+    ui.warn("Demo mode: made-up devices, nothing is scanned or saved.")
+    started_at = datetime.now()
+    ui.console.print()
+    with ui.console.status(" Looking for devices (ARP + SSDP)...", spinner_style=ui.ACCENT):
+        devices, _ssdp = demo.discover()
+    ui.ok(f"Found [bold]{len(devices)}[/] devices [bright_black](1 answered UPnP)[/]")
+    results = _analyse_with_progress(devices, lambda on_done: demo.analyse(devices, options, on_done))
+    scan = demo.build(options, results, started_at)
+    ui.print_summary(scan)
+    ui.print_attention(scan)
+    ui.print_network_checks(scan["network_checks"])
     return 0
 
 
@@ -324,9 +350,11 @@ def run_compare(args: argparse.Namespace) -> int:
 def run_menu() -> int:
     ui.print_banner(scanner.VERSION)
     default_network = discovery.detect_local_network() or "192.168.1.0/24"
+    ui.print_readiness(diagnostics.find_nmap() is not None, diagnostics.is_admin(), default_network)
     while True:
         choice = ui.ask_menu_choice()
         if choice == "q":
+            ui.console.print()
             return 0
         try:
             if choice == "1":
@@ -341,6 +369,8 @@ def run_menu() -> int:
                 run_show(parse_args(["show", "--map"]))
             elif choice == "4":
                 run_compare(parse_args(["compare"]))
+            elif choice == "5":
+                run_demo()
         except KeyboardInterrupt:
             # Ctrl+C during a scan goes back to the menu, Ctrl+C in the menu quits.
             ui.console.print()
@@ -349,6 +379,8 @@ def run_menu() -> int:
             # Bad input inside the menu should not close the program.
             if exc.code not in (0, None):
                 ui.error(str(exc.code))
+        # wait, so the results stay on screen before the menu is printed again
+        ui.wait_for_enter()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -360,11 +392,11 @@ def main(argv: list[str] | None = None) -> int:
                 build_parser().print_help()
                 return 0
             return run_menu()
-        if args.command == "scan":
+        if args.command in ("scan", "demo"):
             ui.print_banner(scanner.VERSION)
         else:
             ui.print_header(scanner.VERSION, args.command)
-        handlers = {"scan": run_scan, "doctor": run_doctor, "show": run_show, "compare": run_compare}
+        handlers = {"scan": run_scan, "doctor": run_doctor, "show": run_show, "compare": run_compare, "demo": run_demo}
         return handlers[args.command](args)
     except KeyboardInterrupt:
         ui.console.print()
