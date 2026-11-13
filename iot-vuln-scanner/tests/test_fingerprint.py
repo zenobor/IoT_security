@@ -73,3 +73,17 @@ def test_scan_ports_parses_nmap_output(monkeypatch):
             "scripts": {},
         }
     ]
+
+
+def test_airplay_is_not_a_camera():
+    # Macs and Apple TVs answer as "rtsp" on 5000/7000 because of AirPlay
+    ports = [
+        {"port": 5000, "state": "open", "service": "rtsp"},
+        {"port": 7000, "state": "open", "service": "rtsp"},
+    ]
+    assert identify_device("Private (randomized) MAC", ports)["type"] == "Apple device (AirPlay)"
+
+
+def test_rtsp_on_a_real_camera_port_is_still_a_camera():
+    ports = [{"port": 554, "state": "open", "service": "rtsp"}, {"port": 7000, "state": "open", "service": "rtsp"}]
+    assert identify_device("Unknown", ports)["type"] == "IP camera"

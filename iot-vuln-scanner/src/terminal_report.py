@@ -4,66 +4,131 @@ Everything the scanner prints in the terminal (tables, colors, progress bar), ma
 """
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group
 from rich.markup import escape
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Confirm, Prompt
+from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
 
-from src.findings import device_issues, open_ports_text
+from src.findings import device_issues, open_ports, open_ports_text
 
 
 # highlight=False: otherwise rich colors every number and IP randomly
 console = Console(highlight=False)
 
-RISK_STYLE = {"high": "bold red", "medium": "bold yellow", "low": "green"}
-STATUS_STYLE = {
+ACCENT = "cyan"
+RISK_COLOR = {"high": "red", "medium": "yellow", "low": "green"}
+RISK_ORDER = {"high": 0, "medium": 1, "low": 2}
+STATUS_COLOR = {
     "OK": "green",
     "PASS": "green",
     "WARNING": "yellow",
     "MISSING": "red",
     "MANUAL": "cyan",
-    "UNKNOWN": "dim",
-    "INFO": "dim",
+    "UNKNOWN": "bright_black",
+    "INFO": "bright_black",
 }
 MAX_ISSUES_SHOWN = 6
+
+
+def _unicode() -> bool:
+    """Old Windows consoles (cp1252) can't print box characters, so we fall back to ASCII."""
+    return (console.encoding or "").lower().replace("-", "").startswith("utf")
+
+
+def _symbols() -> dict[str, str]:
+    if _unicode():
+        return {"ok": "✔", "warn": "▲", "error": "✖", "info": "•", "dot": "●", "full": "█", "empty": "░", "sep": "·"}
+    return {"ok": "+", "warn": "!", "error": "x", "info": "*", "dot": "*", "full": "#", "empty": "-", "sep": "|"}
+
+
+# Same as box.SIMPLE_HEAD (only a line under the header) but with plain "-"
+ASCII_SIMPLE_HEAD = box.Box(
+    "    \n"
+    "    \n"
+    " -- \n"
+    "    \n"
+    "    \n"
+    "    \n"
+    "    \n"
+    "    \n",
+    ascii=True,
+)
+
+
+def _box(unicode_box: box.Box = box.ROUNDED) -> box.Box:
+    if _unicode():
+        return unicode_box
+    return ASCII_SIMPLE_HEAD if unicode_box is box.SIMPLE_HEAD else box.ASCII
 
 
 # ---------- small helpers ----------
 
 def ok(message: str) -> None:
-    console.print(f"[green][+][/] {message}")
+    console.print(f" [green]{_symbols()['ok']}[/] {message}")
 
 
 def warn(message: str) -> None:
-    console.print(f"[yellow][!][/] {message}")
+    console.print(f" [yellow]{_symbols()['warn']}[/] {message}")
 
 
 def error(message: str) -> None:
-    console.print(f"[bold red][-][/] {message}")
+    console.print(f" [bold red]{_symbols()['error']}[/] {message}")
 
 
 def info(message: str) -> None:
-    console.print(f"[cyan][*][/] {message}")
+    console.print(f" [{ACCENT}]{_symbols()['info']}[/] {message}")
 
 
 def risk_text(risk: str) -> Text:
+    """Colored "● HIGH" label used in tables."""
     risk = (risk or "low").lower()
-    return Text(risk.upper(), style=RISK_STYLE.get(risk, ""))
+    return Text(f"{_symbols()['dot']} {risk.upper()}", style=f"bold {RISK_COLOR.get(risk, 'white')}")
+
+
+def risk_badge(risk: str) -> Text:
+    """Label with a colored background, used next to each issue."""
+    risk = (risk or "low").lower()
+    color = RISK_COLOR.get(risk, "white")
+    return Text(f" {risk.upper():^6} ", style=f"bold black on {color}")
 
 
 def status_text(status: str) -> Text:
-    return Text(status.upper(), style=STATUS_STYLE.get(status.upper(), ""))
+    return Text(status.upper(), style=f"bold {STATUS_COLOR.get(status.upper(), 'white')}")
 
 
-def score_style(score: int) -> str:
-    return "bold green" if score >= 75 else "bold yellow" if score >= 50 else "bold red"
+def score_color(score: int) -> str:
+    return "green" if score >= 75 else "yellow" if score >= 50 else "red"
 
 
-# ---------- header / progress ----------
+def score_label(score: int) -> str:
+    return "Good" if score >= 75 else "Needs work" if score >= 50 else "At risk"
+
+
+def score_bar(score: int, width: int = 24) -> Text:
+    symbols = _symbols()
+    filled = round(max(0, min(score, 100)) / 100 * width)
+    return Text.assemble(
+        (symbols["full"] * filled, score_color(score)),
+        (symbols["empty"] * (width - filled), "bright_black"),
+    )
+
+
+def _is_unknown(value: str) -> bool:
+    return not value or value.lower().startswith("unknown")
+
+
+def _section(title: str) -> None:
+    console.print()
+    console.print(Rule(Text(title, style="bold"), style="bright_black", align="left", characters="─" if _unicode() else "-"))
+
+
+# ---------- header ----------
 
 # Big logo, made with figlet (font "ANSI Shadow"). Needs a Unicode terminal and 85+ columns.
 BIG_BANNER = """
@@ -115,167 +180,222 @@ def _gradient_line(line: str, width: int) -> Text:
     return text
 
 
-def _supports_unicode() -> bool:
-    return (console.encoding or "").lower().replace("-", "").startswith("utf")
-
-
 def print_banner(version: str) -> None:
+    """Big gradient logo, used by the menu and by "scan"."""
     big_lines = BIG_BANNER.strip("\n").splitlines()
+    small_lines = SMALL_BANNER.strip("\n").splitlines()
     big_width = max(len(line) for line in big_lines)
+    small_width = max(len(line) for line in small_lines)
+
     console.print()
-    if console.width > big_width and _supports_unicode():
-        for line in big_lines:
-            console.print(_gradient_line(line, big_width))
-        separator = "─"
-    elif console.width >= 60:
-        small_lines = SMALL_BANNER.strip("\n").splitlines()
-        small_width = max(len(line) for line in small_lines)
-        for line in small_lines:
-            console.print(_gradient_line(line, small_width))
-        separator = "-"
+    if console.width > big_width and _unicode():
+        lines, width = big_lines, big_width
+    elif console.width > small_width:
+        lines, width = small_lines, small_width
     else:
-        console.print("[bold bright_cyan]IoT Security Scanner[/]")
-        separator = "-"
+        lines, width = [], 0
+    for line in lines:
+        console.print(_gradient_line(line, width))
+    if not lines:
+        console.print(f"[bold {ACCENT}]IoT Security Scanner[/]")
 
+    sep = _symbols()["sep"]
     console.print(
-        f"[dim]{separator * 3}[/] [bold]v{version}[/] [dim]{separator * 3}[/] "
-        "ARP [green]+[/] SSDP [green]+[/] Nmap [green]+[/] NVD "
-        f"[dim]{separator * 3}[/] [dim]by zeno[/] [dim]{separator * 3}[/]"
+        f"\n [bold]v{escape(version)}[/] [bright_black]{sep}[/] ARP + SSDP + Nmap + NVD "
+        f"[bright_black]{sep}[/] [bright_black]a university project by zeno[/]"
     )
-    console.print("[yellow][!][/] [dim]Only scan networks you own or have permission to test.[/]")
+    console.print(" [yellow]Only scan networks you own or have permission to test.[/]")
+
+
+def print_header(version: str, command: str) -> None:
+    """One-line header for the other commands (show, compare, doctor)."""
+    sep = _symbols()["sep"]
     console.print()
+    console.print(
+        f" [bold {ACCENT}]IoT Security Scanner[/] [bright_black]v{escape(version)} {sep}[/] {escape(command)}"
+    )
 
 
-def print_scan_header(network: str, mode: str, nvd: bool, workers: int, admin: bool) -> None:
-    table = Table.grid(padding=(0, 2))
-    table.add_column(style="dim")
+def print_scan_header(network: str, mode: str, nvd: bool, workers: int, admin: bool, custom_ports: bool = False) -> None:
+    table = Table.grid(padding=(0, 3))
+    table.add_column(style="bright_black", no_wrap=True)
     table.add_column()
-    table.add_row("Network", escape(network))
-    table.add_row("Mode", f"{mode} ({'more ports + deep checks' if mode == 'full' else 'IoT ports, fast'})")
-    table.add_row("CVE lookup", "NVD + CISA KEV" if nvd else "off (use --nvd)")
+    if custom_ports:
+        mode_text = f"{mode} [bright_black](custom ports)[/]"
+    elif mode == "full":
+        mode_text = "full [bright_black](more ports + deep checks)[/]"
+    else:
+        mode_text = "quick [bright_black](IoT ports)[/]"
+    table.add_row("Network", f"[bold]{escape(network)}[/]")
+    table.add_row("Mode", mode_text)
+    table.add_row("CVE lookup", "NVD + CISA KEV" if nvd else "[bright_black]off (add --nvd)[/]")
     table.add_row("Workers", str(workers))
-    table.add_row("Admin", "[green]yes[/]" if admin else "[yellow]no (results may be incomplete)[/]")
-    console.print(table)
+    table.add_row("Admin", "[green]yes[/]" if admin else "[yellow]no[/] [bright_black](results may be incomplete)[/]")
     console.print()
+    console.print(
+        Panel(table, title="[bold]New scan[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(0, 2), expand=False)
+    )
 
 
 def create_progress() -> Progress:
     return Progress(
-        SpinnerColumn(),
+        SpinnerColumn(style=ACCENT),
         TextColumn("{task.description}"),
-        BarColumn(bar_width=30),
+        BarColumn(bar_width=28, complete_style=ACCENT, finished_style="green"),
         MofNCompleteColumn(),
+        TextColumn("[bright_black]{task.fields[current]}"),
         TimeElapsedColumn(),
         console=console,
         transient=True,
     )
 
 
-def device_done_line(device: dict) -> str:
+def device_done_line(device: dict) -> Text:
+    """Printed above the progress bar every time a device is done."""
     identity = device.get("identity", {})
     risk = device.get("risk", "low")
-    errors = " [dim](scan problem)[/]" if device.get("scan_errors") else ""
-    return (
-        f"  [{RISK_STYLE.get(risk, '')}]{risk.upper():<6}[/] {device.get('ip', ''):<15} "
-        f"{escape(identity.get('type', 'Unknown device'))}{errors}"
-    )
+    ports = len(open_ports(device))
+    line = Text("   ")
+    line.append_text(risk_text(risk))
+    line.append(" " * (8 - len(risk)))
+    line.append(f"{device.get('ip', ''):<16}", style="bold")
+    line.append(identity.get("type", "Unknown device"))
+    line.append(f"  {_symbols()['sep']} {ports} open port{'s' if ports != 1 else ''}", style="bright_black")
+    if device.get("scan_errors"):
+        line.append("  (scan problem)", style="yellow")
+    return line
 
 
 # ---------- results ----------
 
 def print_summary(scan: dict) -> None:
-    """Prints the score and the table with every device."""
+    """Prints the score panel and the table with every device."""
     info_data = scan.get("scan", {})
     devices = scan.get("devices", [])
     counts = info_data.get("risk_counts", {})
     score = info_data.get("network_score", 100)
+    sep = _symbols()["sep"]
 
-    headline = Text.assemble(
-        ("Network score: ", "bold"),
-        (f"{score}/100", score_style(score)),
-        "    ",
-        ("HIGH ", "bold red"), str(counts.get("high", 0)),
-        "   ",
-        ("MEDIUM ", "bold yellow"), str(counts.get("medium", 0)),
-        "   ",
-        ("LOW ", "green"), str(counts.get("low", 0)),
-        "   ",
-        ("Devices ", "bold"), str(len(devices)),
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(style="bright_black", no_wrap=True)
+    grid.add_column()
+    grid.add_row(
+        "Network score",
+        Text.assemble(score_bar(score), "  ", (f"{score}/100", f"bold {score_color(score)}"), "  ", (score_label(score), score_color(score))),
     )
+    risks = Text()
+    for level in ("high", "medium", "low"):
+        risks.append_text(risk_text(level))
+        risks.append(f" {counts.get(level, 0)}    ")
+    grid.add_row("Devices", Text.assemble((str(len(devices)), "bold"), "      ", risks))
+    details = [str(info_data.get("network", "")), f"{info_data.get('mode', 'quick')} mode"]
+    if info_data.get("nvd"):
+        details.append("NVD")
+    if info_data.get("started_at"):
+        details.append(str(info_data["started_at"]).replace("T", " ")[:16])
+    if info_data.get("duration_seconds") is not None:
+        details.append(f"{info_data['duration_seconds']} s")
+    grid.add_row("Scan", Text(f" {sep} ".join(item for item in details if item)))
+
     console.print()
-    console.print(Panel(headline, title="Scan summary", border_style="cyan", box=box.ROUNDED))
+    console.print(Panel(grid, title="[bold]Scan summary[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(1, 2)))
 
     if not devices:
         warn("No devices found.")
         return
 
-    table = Table(box=box.SIMPLE_HEAVY, header_style="bold", expand=False)
-    table.add_column("IP", no_wrap=True)
-    table.add_column("Hostname", max_width=22, overflow="ellipsis", no_wrap=True)
-    table.add_column("Type", max_width=31)
-    table.add_column("Vendor", max_width=24, overflow="ellipsis", no_wrap=True)
-    table.add_column("Open ports", max_width=24)
-    table.add_column("Risk", justify="center")
+    console.print(Padding(_devices_table(devices), (0, 1)))
+
+
+def _devices_table(devices: list[dict]) -> Table:
+    # rich squeezes columns badly when they don't fit, so on small terminals
+    # we hide the least useful columns instead (hostname first, then vendor)
+    show_hostname = console.width >= 118
+    show_vendor = console.width >= 96
+
+    table = Table(box=_box(box.SIMPLE_HEAD), header_style="bold bright_black", pad_edge=False, padding=(0, 1))
+    table.add_column("IP", no_wrap=True, style="bold")
+    if show_hostname:
+        table.add_column("Hostname", max_width=16, overflow="ellipsis", no_wrap=True)
+    table.add_column("Type", max_width=28, overflow="ellipsis", no_wrap=True)
+    if show_vendor:
+        table.add_column("Vendor", max_width=20, overflow="ellipsis", no_wrap=True)
+    table.add_column("Open ports", max_width=18)
+    table.add_column("Risk", no_wrap=True)
+
     for device in devices:
         identity = device.get("identity", {})
-        hostname = device.get("hostname", "")
+        hostname = str(device.get("hostname", ""))
+        vendor = str(identity.get("vendor", device.get("vendor", "Unknown")))
+        ports = open_ports_text(device, with_service=False)
         # Text(...) instead of plain strings: a device name with [brackets] would
         # otherwise be read as rich markup and break the table
-        table.add_row(
-            device.get("ip", ""),
-            Text("-" if hostname.startswith("Unknown") else hostname, style="dim" if hostname.startswith("Unknown") else ""),
-            Text(identity.get("type", "Unknown device")),
-            Text(identity.get("vendor", device.get("vendor", "Unknown"))),
-            Text(open_ports_text(device, with_service=False)),
-            risk_text(device.get("risk", "low")),
-        )
-    console.print(table)
+        row = [device.get("ip", "")]
+        if show_hostname:
+            row.append(Text("-", style="bright_black") if _is_unknown(hostname) else Text(hostname))
+        row.append(Text(identity.get("type", "Unknown device")))
+        if show_vendor:
+            row.append(Text(vendor, style="bright_black" if _is_unknown(vendor) or vendor.startswith("Private") else ""))
+        row += [Text(ports, style="bright_black" if ports == "none" else ""), risk_text(device.get("risk", "low"))]
+        table.add_row(*row)
+    return table
+
+
+def _device_panel(device: dict, show_all: bool = False) -> Panel:
+    identity = device.get("identity", {})
+    risk = device.get("risk", "low")
+    issues = device_issues(device)
+    upnp = str(device.get("ssdp", {}).get("server", ""))
+
+    facts = Table.grid(padding=(0, 3))
+    facts.add_column(style="bright_black", no_wrap=True)
+    facts.add_column()
+    facts.add_row("Vendor", Text(str(identity.get("vendor", "Unknown"))))
+    model = str(identity.get("model", ""))
+    if not _is_unknown(model) and model != upnp:
+        # the "model" is the first product Nmap/UPnP recognised (e.g. "OpenSSH"), not always the real model
+        facts.add_row("Software", Text(model))
+    facts.add_row("MAC", Text(str(device.get("mac", "unknown"))))
+    hostname = str(device.get("hostname", ""))
+    if not _is_unknown(hostname):
+        facts.add_row("Hostname", Text(hostname))
+    facts.add_row("Open ports", Text(open_ports_text(device)))
+    if upnp:
+        facts.add_row("UPnP", Text(upnp))
+
+    parts = [facts]
+    shown = issues if show_all else issues[:MAX_ISSUES_SHOWN]
+    if shown or device.get("scan_errors"):
+        issue_table = Table.grid(padding=(0, 2))
+        issue_table.add_column(no_wrap=True)
+        issue_table.add_column()
+        for number, issue in enumerate(shown):
+            if number:
+                issue_table.add_row("", "")
+            body = Text(issue["title"], style="bold")
+            if issue["detail"]:
+                body.append(f"\n{issue['detail']}", style="")
+            if issue["fix"]:
+                body.append(f"\nFix: {issue['fix']}", style="green")
+            issue_table.add_row(risk_badge(issue["severity"]), body)
+        for scan_error in device.get("scan_errors", []):
+            issue_table.add_row(Text(" ERROR  ", style="bold black on bright_black"), Text(scan_error, style="bright_black"))
+        parts += [Text(""), issue_table]
+        if len(issues) > len(shown):
+            parts.append(Text(f"+ {len(issues) - len(shown)} more in the report (or: show --ip {device.get('ip', '')})", style="bright_black"))
+    else:
+        parts += [Text(""), Text("No issues found by these checks.", style="green")]
+
+    title = Text.assemble((device.get("ip", ""), "bold"), "  ", identity.get("type", "Unknown device"), "  ", risk_text(risk))
+    return Panel(
+        Group(*parts), title=title, title_align="left", border_style=RISK_COLOR.get(risk, "white"), box=_box(), padding=(1, 2)
+    )
 
 
 def print_device(device: dict, show_all: bool = False) -> None:
     """Prints one device with its issues and fixes."""
-    identity = device.get("identity", {})
-    risk = device.get("risk", "low")
-    issues = device_issues(device)
-
-    body = Table.grid(padding=(0, 2))
-    body.add_column(style="dim", no_wrap=True)
-    body.add_column()
-    body.add_row("Vendor", Text(f"{identity.get('vendor', 'Unknown')} / {identity.get('model', 'Unknown model')}"))
-    body.add_row("MAC", Text(str(device.get("mac", "unknown"))))
-    hostname = str(device.get("hostname", "Unknown hostname"))
-    if not hostname.startswith("Unknown"):
-        body.add_row("Hostname", Text(hostname))
-    body.add_row("Open ports", Text(open_ports_text(device)))
-    if device.get("ssdp", {}).get("server"):
-        body.add_row("UPnP", Text(device["ssdp"]["server"]))
-
-    issue_table = Table(box=None, show_header=False, padding=(0, 1), expand=False)
-    issue_table.add_column(no_wrap=True)
-    issue_table.add_column()
-    shown = issues if show_all else issues[:MAX_ISSUES_SHOWN]
-    for issue in shown:
-        title = Text(issue["title"], style="bold")
-        title.append(f"\n{issue['detail']}", style="")
-        title.append(f"\nFix: {issue['fix']}", style="green")
-        issue_table.add_row(risk_text(issue["severity"]), title)
-    for scan_error in device.get("scan_errors", []):
-        issue_table.add_row(Text("ERROR", style="dim"), Text(scan_error, style="dim"))
-
-    content = Table.grid()
-    content.add_row(body)
-    if shown or device.get("scan_errors"):
-        content.add_row("")
-        content.add_row(issue_table)
-    else:
-        content.add_row(Text("\nNo issues found by these checks.", style="green"))
-    if len(issues) > len(shown):
-        content.add_row(Text(f"... and {len(issues) - len(shown)} more in the report", style="dim"))
-
-    title = Text.assemble(
-        (device.get("ip", ""), "bold"), "  ", identity.get("type", "Unknown device"), "  ", risk_text(risk)
-    )
-    console.print(Panel(content, title=title, title_align="left", border_style=RISK_STYLE.get(risk, "white").split()[-1]))
+    console.print()
+    console.print(_device_panel(device, show_all))
 
 
 def print_attention(scan: dict) -> None:
@@ -286,78 +406,90 @@ def print_attention(scan: dict) -> None:
         if device.get("risk") in ("high", "medium") or device.get("scan_errors")
     ]
     if not devices:
+        console.print()
         ok("No device needs attention. Nice!")
         return
-    console.print()
-    console.rule("[bold]Devices that need attention[/]", style="dim")
-    order = {"high": 0, "medium": 1, "low": 2}
-    for device in sorted(devices, key=lambda item: order.get(item.get("risk", "low"), 3)):
+    _section(f"Devices that need attention ({len(devices)})")
+    for device in sorted(devices, key=lambda item: RISK_ORDER.get(item.get("risk", "low"), 3)):
         print_device(device)
 
 
-def _checks_table(checks: list[dict], title: str) -> Table:
-    table = Table(title=title, title_justify="left", title_style="bold", box=box.SIMPLE, header_style="bold")
-    table.add_column("Check", no_wrap=True)
-    table.add_column("Status", justify="center")
+def _checks_table(checks: list[dict]) -> Table:
+    table = Table(box=_box(box.SIMPLE_HEAD), header_style="bold bright_black", pad_edge=False, padding=(0, 1))
+    table.add_column("Check", no_wrap=True, style="bold")
+    table.add_column("Status", no_wrap=True)
     table.add_column("Details")
     for check in checks:
-        table.add_row(check["name"], status_text(check["status"]), Text(check["details"]))
+        table.add_row(Text(check["name"]), status_text(check["status"]), Text(check["details"]))
     return table
 
 
 def print_network_checks(checks: list[dict]) -> None:
     if checks:
-        console.print(_checks_table(checks, "Network checks"))
+        _section("Network checks")
+        console.print(Padding(_checks_table(checks), (0, 1)))
 
 
 def print_diagnostics(checks: list[dict]) -> None:
-    console.print(_checks_table(checks, "Setup check"))
-    problems = [check for check in checks if check["status"] in ("MISSING", "WARNING")]
-    if any(check["status"] == "MISSING" for check in problems):
+    _section("Setup check")
+    console.print(Padding(_checks_table(checks), (0, 1)))
+    if any(check["status"] == "MISSING" for check in checks):
         error("Something is missing, fix it before scanning (see README > Setup).")
-    elif problems:
+    elif any(check["status"] == "WARNING" for check in checks):
         warn("The scanner can run, but some results may be incomplete.")
     else:
         ok("Everything looks ready to scan.")
 
 
-def print_outputs(paths: list[str]) -> None:
-    console.print()
+def print_outputs(paths: list[str], duration: int | None = None) -> None:
+    _section("Reports")
     for path in paths:
         ok(f"Saved [bold]{escape(path)}[/]")
+    if duration is not None:
+        info(f"Scan took {duration} s")
+    console.print()
+    console.print(" [bright_black]Next steps[/]")
+    console.print("   python main.py show --ip <IP>   [bright_black]every issue of one device[/]")
+    console.print("   python main.py show --map       [bright_black]devices grouped by type[/]")
+    console.print("   python main.py compare          [bright_black]what changed since the previous scan[/]")
 
 
 def print_network_map(scan: dict) -> None:
     """Shows the devices grouped by type, like a small network map."""
     info_data = scan.get("scan", {})
-    tree = Tree(f"[bold]{escape(str(info_data.get('network', 'network')))}[/]", guide_style="dim")
+    tree = Tree(
+        Text(str(info_data.get("network", "network")), style=f"bold {ACCENT}"),
+        guide_style="bright_black",
+    )
     groups: dict[str, list[dict]] = {}
     for device in scan.get("devices", []):
         groups.setdefault(device.get("identity", {}).get("type", "Unknown network device"), []).append(device)
     for device_type in sorted(groups):
-        branch = tree.add(f"[bold]{escape(device_type)}[/] [dim]({len(groups[device_type])})[/]")
+        branch = tree.add(Text.assemble((device_type, "bold"), (f"  ({len(groups[device_type])})", "bright_black")))
         for device in groups[device_type]:
+            risk = device.get("risk", "low")
             label = Text.assemble(
-                (f"{device.get('ip', ''):<15} ", ""),
-                risk_text(device.get("risk", "low")),
-                (f"  {device.get('identity', {}).get('vendor', '')}", "dim"),
+                (f"{device.get('ip', ''):<16}", ""),
+                risk_text(risk),
+                " " * (8 - len(risk)),
+                (str(device.get("identity", {}).get("vendor", "")), "bright_black"),
             )
             branch.add(label)
     console.print()
-    console.print(Panel(tree, title="Network map", title_align="left", border_style="cyan"))
+    console.print(Panel(tree, title="[bold]Network map[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(1, 2)))
 
 
 def print_comparison(diff: dict) -> None:
-    title = f"Changes since {str(diff.get('old_date', 'last scan')).replace('T', ' ')}"
-    table = Table(title=title, title_justify="left", title_style="bold", box=box.SIMPLE, header_style="bold")
-    table.add_column("Change")
-    table.add_column("Device")
+    _section(f"Changes since {str(diff.get('old_date', 'last scan')).replace('T', ' ')}")
+    table = Table(box=_box(box.SIMPLE_HEAD), header_style="bold bright_black", pad_edge=False, padding=(0, 1))
+    table.add_column("Change", no_wrap=True)
+    table.add_column("Device", no_wrap=True, style="bold")
     table.add_column("Details")
 
     for device in diff["new_devices"]:
-        table.add_row("[cyan]NEW[/]", device.get("ip", ""), Text(device.get("identity", {}).get("type", "")))
+        table.add_row(Text("NEW", style="bold cyan"), device.get("ip", ""), Text(device.get("identity", {}).get("type", "")))
     for device in diff["missing_devices"]:
-        table.add_row("[dim]GONE[/]", device.get("ip", ""), Text(device.get("identity", {}).get("type", "")))
+        table.add_row(Text("GONE", style="bright_black"), device.get("ip", ""), Text(device.get("identity", {}).get("type", "")))
     for change in diff["changed_devices"]:
         details = []
         if change["opened_ports"]:
@@ -368,44 +500,51 @@ def print_comparison(diff: dict) -> None:
             details.append(f"risk {change['old_risk'].upper()} -> {change['new_risk'].upper()}")
         if change["old_ip"] != change["ip"]:
             details.append(f"IP was {change['old_ip']}")
-        table.add_row("[yellow]CHANGED[/]", change["ip"], "; ".join(details))
+        table.add_row(Text("CHANGED", style="bold yellow"), change["ip"], Text("; ".join(details)))
 
     if table.row_count:
-        console.print(table)
+        console.print(Padding(table, (0, 1)))
     else:
         ok("Nothing changed since the previous scan.")
-    if diff.get("old_score") is not None and diff.get("new_score") is not None:
-        info(f"Network score: {diff['old_score']} -> {diff['new_score']}")
+    old_score, new_score = diff.get("old_score"), diff.get("new_score")
+    if old_score is not None and new_score is not None:
+        trend = "green" if new_score > old_score else "red" if new_score < old_score else "bright_black"
+        info(f"Network score: {old_score} -> [bold {trend}]{new_score}[/]")
 
 
 # ---------- interactive menu ----------
 
 MENU = [
-    ("1", "Scan the network"),
-    ("2", "Check setup (Nmap, Npcap, admin rights)"),
-    ("3", "Show the last scan"),
-    ("4", "Compare the last two scans"),
-    ("5", "Exit"),
+    ("1", "Scan the network", "find devices and check them"),
+    ("2", "Check setup", "Nmap, Npcap, admin rights"),
+    ("3", "Show the last scan", "summary, issues and network map"),
+    ("4", "Compare scans", "what changed since the previous scan"),
+    ("q", "Quit", ""),
 ]
 
 
 def ask_menu_choice() -> str:
+    table = Table.grid(padding=(0, 2))
+    table.add_column(style=f"bold {ACCENT}", no_wrap=True)
+    table.add_column(style="bold", no_wrap=True)
+    table.add_column(style="bright_black")
+    for key, label, hint in MENU:
+        table.add_row(Text(f"[{key}]"), label, hint)  # Text(): "[q]" would be read as markup
     console.print()
-    for key, label in MENU:
-        console.print(f"  [bold cyan]{key}[/]  {label}")
-    return Prompt.ask("\nChoose", choices=[key for key, _ in MENU], default="1", console=console)
+    console.print(Panel(table, title="[bold]Menu[/]", title_align="left", border_style=ACCENT, box=_box(), padding=(1, 2), expand=False))
+    return Prompt.ask(" Choose", choices=[key for key, *_ in MENU], default="1", console=console)
 
 
 def ask_scan_settings(default_network: str) -> dict:
-    network = Prompt.ask("Network to scan", default=default_network, console=console)
-    mode = Prompt.ask("Mode", choices=["quick", "full"], default="quick", console=console)
-    nvd = Confirm.ask("Look up known CVEs online (NVD, slower)?", default=False, console=console)
+    network = Prompt.ask(" Network to scan", default=default_network, console=console)
+    mode = Prompt.ask(" Mode", choices=["quick", "full"], default="quick", console=console)
+    nvd = Confirm.ask(" Look up known CVEs online (NVD, slower)?", default=False, console=console)
     return {"network": network.strip(), "mode": mode, "nvd": nvd}
 
 
 def confirm_authorized(network: str) -> bool:
     return Confirm.ask(
-        f"Do you own [bold]{escape(network)}[/] or have permission to scan it?",
+        f" Do you own [bold]{escape(network)}[/] or have permission to scan it?",
         default=False,
         console=console,
     )

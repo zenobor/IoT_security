@@ -119,7 +119,7 @@ def test_validate_ports():
 
 
 def test_menu_runs_the_chosen_actions(monkeypatch):
-    choices = iter(["2", "3", "5"])
+    choices = iter(["2", "3", "q"])
     called = []
     monkeypatch.setattr(main.discovery, "detect_local_network", lambda: "192.168.1.0/24")
     monkeypatch.setattr(main.ui, "ask_menu_choice", lambda: next(choices))
@@ -139,3 +139,25 @@ def test_config_file_sets_defaults(tmp_path):
 
     assert args.mode == "full"
     assert args.workers == 2
+
+
+def test_scan_with_no_devices_keeps_the_old_results(fake_network, tmp_path, monkeypatch):
+    monkeypatch.setattr(scanner.discovery, "scan_network", lambda *args, **kwargs: [])
+    monkeypatch.setattr(scanner.discovery, "discover_ssdp", lambda *args, **kwargs: {})
+
+    assert main.main(_scan_argv(tmp_path)) == 1
+    assert not (tmp_path / "results.json").exists()
+
+
+def test_show_refuses_a_file_that_is_not_a_scan(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+
+    assert main.main(["show", str(bad)]) == 2
+
+
+def test_compare_with_only_one_scan(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(main, "PREVIOUS_JSON", tmp_path / "previous.json")
+
+    assert main.main(["compare"]) == 1
+    assert "only one saved scan" in capsys.readouterr().out

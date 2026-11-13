@@ -15,7 +15,7 @@ import requests
 from src import deep_checks, diagnostics, discovery, fingerprint, rules, scoring, vuln_check
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 
 @dataclass

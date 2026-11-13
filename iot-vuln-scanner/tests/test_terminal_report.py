@@ -7,7 +7,7 @@ def test_print_summary_contains_score_and_device(capsys, device_factory, scan_fa
     ui.print_summary(scan)
     output = capsys.readouterr().out
 
-    assert "Network score: 30/100" in output
+    assert "Network score" in output and "30/100" in output
     assert "192.168.1.10" in output
     assert "IP camera" in output
     assert "HIGH" in output

@@ -159,7 +159,10 @@ def load_scan(path: str) -> dict:
         raise SystemExit(f"{path} not found. Run a scan first: python main.py scan")
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"Could not read {path}: {exc}")
-    # Old result files only had the device list.
+    if not isinstance(data, dict) or not isinstance(data.get("devices", []), list):
+        raise SystemExit(f"{path} is not a scan result file.")
+    # Files saved by older versions can miss some of these keys
+    data.setdefault("devices", [])
     data.setdefault("scan", {})
     data.setdefault("network_checks", [])
     return data
@@ -217,54 +220,72 @@ def run_scan(args: argparse.Namespace) -> int:
         workers=args.workers,
         nvd_api_key=args.nvd_api_key,
     )
-    ui.print_scan_header(network, options.mode, options.nvd, options.workers, diagnostics.is_admin())
+    ui.print_scan_header(
+        network, options.mode, options.nvd, options.workers, diagnostics.is_admin(), custom_ports=bool(port_spec)
+    )
     if args.nvd and args.offline:
         ui.warn("--offline is set, so the NVD lookup is skipped.")
     if options.nvd and not options.nvd_api_key:
         ui.info("No NVD API key: CVE lookups are slow (NVD allows 5 requests / 30 s).")
 
     started_at = datetime.now()
+    ui.console.print()
     try:
-        with ui.console.status("Looking for devices (ARP + SSDP)..."):
+        with ui.console.status(" Looking for devices (ARP + SSDP)...", spinner_style=ui.ACCENT):
             devices, ssdp = scanner.discover_devices(options)
             if options.nvd:
                 options.kev_ids = vuln_check.load_kev(offline=options.offline)
     except PermissionError:
         ui.error("Permission denied. Run the terminal as administrator (or with sudo).")
         return 1
-    except OSError as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
+        # scapy raises different errors when Npcap is missing or the interface is wrong
         ui.error(f"Network discovery failed: {exc}")
         ui.info("Run 'python main.py doctor' to check Npcap and admin rights.")
         return 1
 
     if not devices:
+        # Nothing is saved, so the last good scan is still there for show/compare
         ui.warn("No devices answered. Check the network range, Wi-Fi isolation and admin rights.")
-    else:
-        ui.ok(f"Found [bold]{len(devices)}[/] devices ({len(ssdp)} answered UPnP)")
+        ui.info("Run 'python main.py doctor' to check your setup.")
+        return 1
+    ui.ok(f"Found [bold]{len(devices)}[/] devices [bright_black]({len(ssdp)} answered UPnP)[/]")
+    ui.console.print()
 
     with ui.create_progress() as progress:
-        task = progress.add_task("Analysing devices", total=len(devices))
+        task = progress.add_task(" Analysing", total=len(devices), current="")
 
         def on_done(result: dict) -> None:
             progress.console.print(ui.device_done_line(result))
-            progress.advance(task)
+            progress.update(task, advance=1, current=result.get("ip", ""))
 
         results = scanner.analyse_devices(devices, options, ssdp, on_done=on_done)
 
     scan = scanner.build_scan(options, results, started_at)
+    previous = _previous_scan(args, network)
     saved = save_reports(scan, args)
 
     ui.print_summary(scan)
     if not args.no_details:
         ui.print_attention(scan)
         ui.print_network_checks(scan["network_checks"])
-    if PREVIOUS_JSON.exists() and Path(args.json_output).resolve() == LATEST_JSON.resolve():
-        diff = compare.compare_scans(load_scan(str(PREVIOUS_JSON)), scan)
+    if previous:
+        diff = compare.compare_scans(previous, scan)
         if compare.has_changes(diff):
             ui.print_comparison(diff)
-    ui.print_outputs(saved)
-    ui.info(f"Scan took {scan['scan']['duration_seconds']} s")
+    ui.print_outputs(saved, scan["scan"]["duration_seconds"])
     return 0
+
+
+def _previous_scan(args: argparse.Namespace, network: str) -> dict | None:
+    """The last saved scan of the same network, used to show what changed."""
+    if Path(args.json_output).resolve() != LATEST_JSON.resolve() or not LATEST_JSON.exists():
+        return None
+    try:
+        previous = load_scan(str(LATEST_JSON))
+    except SystemExit:
+        return None
+    return previous if previous["scan"].get("network") == network else None
 
 
 def run_doctor(_args: argparse.Namespace | None = None) -> int:
@@ -283,9 +304,6 @@ def run_show(args: argparse.Namespace) -> int:
         ui.print_device(device, show_all=True)
         return 0
 
-    info = scan.get("scan", {})
-    if info:
-        ui.info(f"Scan of {info.get('network')} on {str(info.get('started_at', '')).replace('T', ' ')} ({info.get('mode')} mode)")
     ui.print_summary(scan)
     ui.print_attention(scan)
     ui.print_network_checks(scan.get("network_checks", []))
@@ -295,6 +313,9 @@ def run_show(args: argparse.Namespace) -> int:
 
 
 def run_compare(args: argparse.Namespace) -> int:
+    if args.old == str(PREVIOUS_JSON) and not PREVIOUS_JSON.exists():
+        ui.warn("There is only one saved scan. Run another scan, then compare.")
+        return 1
     diff = compare.compare_scans(load_scan(args.old), load_scan(args.new))
     ui.print_comparison(diff)
     return 0
@@ -305,6 +326,8 @@ def run_menu() -> int:
     default_network = discovery.detect_local_network() or "192.168.1.0/24"
     while True:
         choice = ui.ask_menu_choice()
+        if choice == "q":
+            return 0
         try:
             if choice == "1":
                 settings = ui.ask_scan_settings(default_network)
@@ -318,8 +341,10 @@ def run_menu() -> int:
                 run_show(parse_args(["show", "--map"]))
             elif choice == "4":
                 run_compare(parse_args(["compare"]))
-            else:
-                return 0
+        except KeyboardInterrupt:
+            # Ctrl+C during a scan goes back to the menu, Ctrl+C in the menu quits.
+            ui.console.print()
+            ui.warn("Stopped. Back to the menu.")
         except SystemExit as exc:
             # Bad input inside the menu should not close the program.
             if exc.code not in (0, None):
@@ -335,7 +360,10 @@ def main(argv: list[str] | None = None) -> int:
                 build_parser().print_help()
                 return 0
             return run_menu()
-        ui.print_banner(scanner.VERSION)
+        if args.command == "scan":
+            ui.print_banner(scanner.VERSION)
+        else:
+            ui.print_header(scanner.VERSION, args.command)
         handlers = {"scan": run_scan, "doctor": run_doctor, "show": run_show, "compare": run_compare}
         return handlers[args.command](args)
     except KeyboardInterrupt:

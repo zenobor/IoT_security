@@ -3,8 +3,9 @@ fingerprint.py
 Identifies vendor, hostname, open services and device type for each device.
 """
 
-import os
 import socket
+
+from src.diagnostics import find_nmap
 
 
 # Ports checked in quick mode: the usual suspects plus ports that IoT devices love
@@ -17,6 +18,7 @@ IOT_PORTS = [
 ]
 QUICK_PORTS = ",".join(str(port) for port in IOT_PORTS)
 FULL_PORTS = "1-1024," + ",".join(str(port) for port in IOT_PORTS if port > 1024)
+AIRPLAY_PORTS = {5000, 7000}
 
 # Words in the MAC vendor name that tell us what kind of device it probably is.
 VENDOR_HINTS = [
@@ -29,20 +31,15 @@ VENDOR_HINTS = [
     (("brother", "epson", "canon", "lexmark", "kyocera"), "Network printer"),
     (("tp-link", "netgear", "ubiquiti", "mikrotik", "zyxel", "avm", "d-link", "tenda", "huawei", "zte", "technicolor", "sagemcom"), "Router or network device"),
     (("raspberry pi",), "Raspberry Pi"),
+    (("apple",), "Apple device"),
     (("synology", "qnap", "western digital"), "Network storage (NAS)"),
 ]
 
 
 def _create_scanner(nmap):
-    search_paths = [
-        path
-        for path in (
-            r"C:\Program Files\Nmap\nmap.exe",
-            r"C:\Program Files (x86)\Nmap\nmap.exe",
-        )
-        if os.path.exists(path)
-    ]
-    return nmap.PortScanner(nmap_search_path=("nmap", *search_paths))
+    # find_nmap also looks in the Windows install folders, which are often not in PATH
+    nmap_path = find_nmap()
+    return nmap.PortScanner(nmap_search_path=(nmap_path,) if nmap_path else ("nmap",))
 
 
 def is_randomized_mac(mac_address: str) -> bool:
@@ -94,10 +91,18 @@ def identify_device(vendor: str, ports: list[dict], ssdp: dict | None = None) ->
         None,
     )
 
-    if "rtsp" in services or port_numbers & {554, 8554}:
+    # Macs, iPhones and Apple TVs use RTSP for AirPlay on ports 5000/7000, so
+    # an "rtsp" service there doesn't mean camera. Only the real RTSP ports count.
+    rtsp_ports = {port.get("port") for port in open_ports if "rtsp" in str(port.get("service", "")).lower()}
+    camera = bool(port_numbers & {554, 8554} or rtsp_ports - AIRPLAY_PORTS)
+    airplay = bool(rtsp_ports & AIRPLAY_PORTS or AIRPLAY_PORTS <= port_numbers)
+
+    if camera:
         device_type = "IP camera"
     elif vendor_type:
         device_type = vendor_type
+    elif airplay:
+        device_type = "Apple device (AirPlay)"
     elif "ipp" in services or 9100 in port_numbers:
         device_type = "Network printer"
     elif 5555 in port_numbers:

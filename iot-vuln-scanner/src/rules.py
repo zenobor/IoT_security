@@ -5,6 +5,7 @@ Simple checks for insecure patterns that are common on IoT devices.
 
 import json
 import re
+from functools import cache
 from pathlib import Path
 
 
@@ -58,6 +59,7 @@ def check_mqtt_open(open_ports: list[int]) -> bool:
     return 1883 in open_ports
 
 
+@cache  # the file is read once, not once per device
 def _load_default_creds() -> dict:
     try:
         with DEFAULT_CREDS_PATH.open(encoding="utf-8") as file:
@@ -66,12 +68,11 @@ def _load_default_creds() -> dict:
         return {}
 
 
-def check_default_credentials(vendor: str, ip: str | None = None) -> bool:
+def check_default_credentials(vendor: str) -> bool:
     """Flags the device if its vendor is known for shipping default passwords.
 
     This check never tries to log in. It only tells the user to double check the password.
     """
-    del ip
     normalized_vendor = vendor.strip().lower()
     # Before this check every "Unknown" device was flagged, which made almost
     # every phone look risky. No vendor = we can't say anything.

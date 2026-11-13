@@ -1,11 +1,11 @@
 """Desktop interface for the IoT vulnerability scanner."""
 
-import os
 import json
+import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QUrl, Qt
+from PySide6.QtCore import QProcess, QProcessEnvironment, QUrl, Qt
 from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
@@ -42,10 +42,11 @@ class ScannerWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.project_dir = Path(__file__).parent
+        # Same folder as the terminal version, so "show" and "compare" also see GUI scans
         self.output_dir = (
             Path.home() / "IoTScannerReports"
             if getattr(sys, "frozen", False)
-            else self.project_dir
+            else self.project_dir / "reports"
         )
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.markdown_report = self.output_dir / "scan_report.md"
@@ -56,6 +57,10 @@ class ScannerWindow(QMainWindow):
         self.devices = []
         self.process = QProcess(self)
         self.process.setWorkingDirectory(str(self.project_dir))
+        # The scanner prints Unicode (logo, symbols): without this Windows uses cp1252 for the pipe
+        environment = QProcessEnvironment.systemEnvironment()
+        environment.insert("PYTHONIOENCODING", "utf-8")
+        self.process.setProcessEnvironment(environment)
         self.process.readyReadStandardOutput.connect(self.read_process_output)
         self.process.readyReadStandardError.connect(self.read_process_output)
         self.process.finished.connect(self.scan_finished)
@@ -101,7 +106,8 @@ class ScannerWindow(QMainWindow):
 
         settings = QGroupBox("Scan settings")
         form = QFormLayout(settings)
-        self.network_input = QLineEdit("192.168.1.0/24")
+        self.network_input = QLineEdit("auto")
+        self.network_input.setToolTip("CIDR range, e.g. 192.168.1.0/24, or 'auto' to detect it.")
         self.ports_input = QLineEdit()
         self.ports_input.setPlaceholderText("Example: 22,80,443,554")
         self.mode_input = QComboBox()
@@ -306,7 +312,7 @@ class ScannerWindow(QMainWindow):
         self.devices = devices
         self.results_table.setRowCount(len(devices))
         self.network_map.clear()
-        network_root = QTreeWidgetItem([self.network_input.text(), "", ""])
+        network_root = QTreeWidgetItem([str(data.get("scan", {}).get("network", self.network_input.text())), "", ""])
         self.network_map.addTopLevelItem(network_root)
         risk_counts = {"high": 0, "medium": 0, "low": 0}
         for row, device in enumerate(devices):
@@ -338,7 +344,7 @@ class ScannerWindow(QMainWindow):
             network_root.addChild(map_item)
         network_root.setExpanded(True)
         self.results_table.resizeColumnsToContents()
-        score = scoring.calculate_network_score(devices)
+        score = data.get("scan", {}).get("network_score", scoring.calculate_network_score(devices))
         self.score_label.setText(f"{score}/100")
         score_color = "#176b4d" if score >= 75 else "#b54708" if score >= 50 else "#b42318"
         self.score_label.setStyleSheet(
@@ -409,6 +415,9 @@ class ScannerWindow(QMainWindow):
 
     def process_error(self, _error: QProcess.ProcessError) -> None:
         self.scan_button.setEnabled(True)
+        self.cancel_button.setEnabled(False)
+        self.progress_bar.setRange(0, 1)
+        self.progress_bar.setValue(0)
         self.status_label.setText("Could not start the scanner.")
         self.log_output.appendPlainText(self.process.errorString())
 
