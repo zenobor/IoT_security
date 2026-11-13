@@ -15,9 +15,5 @@ cache/
 scan_report.*
 scan_results.*
 
-# Desktop app build
-build/
-dist/
-
 # IDE
 .vscode/

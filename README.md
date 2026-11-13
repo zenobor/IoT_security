@@ -90,7 +90,6 @@ The network score (0-100) is based on the average risk of the devices. All the w
 iot-vuln-scanner/
 ├── start.bat            double-click launcher for Windows
 ├── main.py              command line (scan, doctor, show, compare, demo, menu)
-├── app.py               optional desktop window (pip install -r requirements-gui.txt)
 ├── data/                vendor list for the default-password check
 ├── src/
 │   ├── discovery.py     ARP + SSDP

@@ -46,7 +46,7 @@ def _needs_attention(device: dict) -> bool:
 
 
 def generate_json_report(scan: dict, output_path: str) -> None:
-    """Saves the full results (used by "show", "compare" and the desktop app)."""
+    """Saves the full results (used by "show" and "compare")."""
     _write(output_path, json.dumps(scan, indent=2, default=str))
 
 
